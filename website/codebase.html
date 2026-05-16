@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codebase Map &mdash; AutoResearchClaw</title>
+  <meta name="description" content="Visual guide to the AutoResearchClaw codebase, scripts, pipeline modules, test coverage, and runtime artifacts.">
+  <link rel="icon" href="assets/logo.png" type="image/png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="navbar">
+  <div class="container">
+    <a href="index.html" class="nav-brand"><img src="assets/logo.png" alt="Logo">AutoResearchClaw</a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="pipeline.html">Pipeline</a></li>
+      <li><a href="codebase.html" class="active">Codebase</a></li>
+      <li><a href="features.html">Features</a></li>
+      <li><a href="papers.html">Papers</a></li>
+      <li><a href="getting-started.html">Get Started</a></li>
+      <li><a href="https://github.com/aiming-lab/AutoResearchClaw" class="nav-github" target="_blank">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Header -->
+<section class="hero codebase-hero">
+  <div class="container">
+    <div class="codebase-hero-grid">
+      <div class="codebase-hero-copy">
+        <p class="eyebrow">Repo guide</p>
+        <h1><span class="gradient">Codebase</span> Map</h1>
+        <p class="tagline">
+          A visual readout of the repository memory files: package layout, runtime flow,
+          script inventory, test surface, generated artifacts, and known architecture notes.
+        </p>
+      </div>
+      <div class="architecture-snapshot" aria-label="AutoResearchClaw architecture snapshot">
+        <img src="assets/framework.png" alt="AutoResearchClaw framework diagram">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Metrics -->
+<section class="container">
+  <div class="stats codebase-stats">
+    <div class="stat">
+      <div class="stat-value">23</div>
+      <div class="stat-label">Pipeline Stages</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">363</div>
+      <div class="stat-label">Python Files Inspected</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">8</div>
+      <div class="stat-label">Pipeline Phases</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">10+</div>
+      <div class="stat-label">Major Subsystems</div>
+    </div>
+  </div>
+</section>
+
+<!-- Repository Shape -->
+<section class="section" style="padding-top: 2rem;">
+  <div class="container">
+    <div class="section-header">
+      <h2>Repository Shape</h2>
+      <p>AutoResearchClaw is centered on the <code>researchclaw</code> Python package, surrounded by docs, static website assets, developer scripts, and tests.</p>
+    </div>
+
+    <div class="repo-map" aria-label="Repository directory map">
+      <div class="repo-node repo-root">
+        <span class="repo-path">AutoResearchClaw/</span>
+        <span class="repo-note">Python package, website, docs, tests, and workflow memory</span>
+      </div>
+
+      <div class="repo-branches">
+        <div class="repo-node accent-blue">
+          <span class="repo-path">researchclaw/</span>
+          <span class="repo-note">CLI, config, pipeline, LLMs, agents, experiments, HITL, literature, templates, web services</span>
+        </div>
+        <div class="repo-node accent-green">
+          <span class="repo-path">tests/</span>
+          <span class="repo-note">Unit, integration, regression, web, HITL, agent, template, MCP, and e2e coverage</span>
+        </div>
+        <div class="repo-node accent-amber">
+          <span class="repo-path">scripts/</span>
+          <span class="repo-note">Developer helpers for sandbox, codegen, MetaClaw, e2e runs, and showcase plotting</span>
+        </div>
+        <div class="repo-node accent-purple">
+          <span class="repo-path">website/</span>
+          <span class="repo-note">Static GitHub Pages site, including this illustrated codebase guide</span>
+        </div>
+        <div class="repo-node accent-red">
+          <span class="repo-path">docs/ and image/</span>
+          <span class="repo-note">Localized docs, showcase papers, guides, planning notes, logo, and framework imagery</span>
+        </div>
+        <div class="repo-node accent-blue">
+          <span class="repo-path">.github/harness_coding_instructions/</span>
+          <span class="repo-note">Workflow harness, agent instructions, request templates, and canonical repo memory files</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Runtime Flow -->
+<section class="section" style="background: var(--color-bg-alt);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Runtime Flow</h2>
+      <p>The CLI and config create a run context, then the executor dispatches stage implementations through the 23-stage state machine.</p>
+    </div>
+
+    <div class="flow-board" aria-label="Runtime execution flow">
+      <div class="flow-card">
+        <div class="flow-index">01</div>
+        <h3>CLI and Config</h3>
+        <p><code>researchclaw/cli.py</code> and <code>config.py</code> resolve projects, LLMs, runtime flags, HITL settings, servers, MCP, export, memory, and skills.</p>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-card">
+        <div class="flow-index">02</div>
+        <h3>Run Context</h3>
+        <p><code>pipeline/runner.py</code> manages artifact directories, run IDs, checkpoints, heartbeats, resume behavior, and deliverable packaging.</p>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-card">
+        <div class="flow-index">03</div>
+        <h3>Stage Contracts</h3>
+        <p><code>pipeline/stages.py</code> and <code>contracts.py</code> define phases, rollback rules, gates, required artifacts, outputs, retry budgets, and done criteria.</p>
+      </div>
+      <div class="flow-arrow">&rarr;</div>
+      <div class="flow-card">
+        <div class="flow-index">04</div>
+        <h3>Executor</h3>
+        <p><code>pipeline/executor.py</code> validates inputs and outputs, applies HITL hooks, calls LLM providers, scores stages, and dispatches implementation modules.</p>
+      </div>
+    </div>
+
+    <div class="phase-ribbon" aria-label="Eight pipeline phases">
+      <div><strong>A</strong><span>Scoping</span></div>
+      <div><strong>B</strong><span>Literature</span></div>
+      <div><strong>C</strong><span>Synthesis</span></div>
+      <div><strong>D</strong><span>Design</span></div>
+      <div><strong>E</strong><span>Execution</span></div>
+      <div><strong>F</strong><span>Analysis</span></div>
+      <div><strong>G</strong><span>Writing</span></div>
+      <div><strong>H</strong><span>Finalization</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Subsystems -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>Subsystem Map</h2>
+      <p>Each subsystem supports a concrete portion of the autonomous research workflow.</p>
+    </div>
+
+    <div class="subsystem-grid">
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-blue">LLM</div>
+        <h3>Provider Layer</h3>
+        <p>OpenAI-compatible chat and Responses API support, fallback models, retry/backoff, JSON mode, Anthropic, Gemini, and ACP adapters.</p>
+        <code>researchclaw/llm/</code>
+      </div>
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-green">Experiment</div>
+        <h3>Sandbox Execution</h3>
+        <p>Docker, SSH remote, Colab Drive, agentic execution, metrics parsing, validation, visualization, and generated project factories.</p>
+        <code>researchclaw/experiment/</code>
+      </div>
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-purple">Agents</div>
+        <h3>Multi-Agent Systems</h3>
+        <p>Benchmark acquisition and validation, code search, figure planning, rendering, critique, and paper integration.</p>
+        <code>researchclaw/agents/</code>
+      </div>
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-amber">Literature</div>
+        <h3>Search and Verification</h3>
+        <p>arXiv, OpenAlex, Semantic Scholar, novelty checks, citation verification, web crawling, scholar search, PDF extraction, and SSRF guards.</p>
+        <code>researchclaw/literature/</code>
+      </div>
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-red">HITL</div>
+        <h3>Human Control</h3>
+        <p>Sessions, intervention policies, adapters, file waits, branching, collaboration, escalation, cost guard, smart pause, TUI, and notifications.</p>
+        <code>researchclaw/hitl/</code>
+      </div>
+      <div class="subsystem-card">
+        <div class="subsystem-tag accent-blue">Output</div>
+        <h3>Publishing Surface</h3>
+        <p>Markdown-to-LaTeX conversion, conference templates, paper compilation, BibTeX handling, results tables, reports, quality scoring, and Overleaf sync.</p>
+        <code>researchclaw/templates/</code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Script Atlas -->
+<section class="section" style="background: var(--color-bg-alt);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Script Atlas</h2>
+      <p>The scripts overview was generated from AST inspection and groups 363 Python files by function, dependencies, and symbols.</p>
+    </div>
+
+    <div class="script-atlas">
+      <div class="script-column">
+        <h3>Main Package</h3>
+        <ul class="script-list">
+          <li><strong>Pipeline</strong><span>runner, executor, contracts, stage implementations, code agent, diagnosis, repair, verification</span></li>
+          <li><strong>Domains</strong><span>Detection, prompt adapters, experiment schemas, and domain profiles for ML, biology, chemistry, economics, math, physics, robotics, security, and more</span></li>
+          <li><strong>Services</strong><span>Server routes, dashboard metrics, MCP tooling, websocket events, voice commands, and dialog routing</span></li>
+          <li><strong>Memory</strong><span>Persistent memory, knowledge graph utilities, skills, MetaClaw bridge, trend tracking, and calendar planning</span></li>
+        </ul>
+      </div>
+
+      <div class="script-column">
+        <h3>Developer Scripts</h3>
+        <ul class="script-list">
+          <li><strong>Sandbox</strong><span>Helpers for local, Docker, SSH, Colab, and generated experiment workflows</span></li>
+          <li><strong>Codegen</strong><span>Utilities around generated project scaffolds, code-agent runs, and reference artifacts</span></li>
+          <li><strong>MetaClaw</strong><span>Cross-run learning and scoring support scripts</span></li>
+          <li><strong>Showcase</strong><span>Plotting and example-paper support for public demos</span></li>
+        </ul>
+      </div>
+
+      <div class="script-column">
+        <h3>Tests</h3>
+        <ul class="script-list">
+          <li><strong>Pipeline</strong><span><code>test_rc_executor.py</code>, <code>test_rc_runner.py</code>, contracts, runner decisions, and stage outputs</span></li>
+          <li><strong>Interfaces</strong><span>CLI, config, templates, Overleaf, MCP, web routes, dashboard, wizard, and voice commands</span></li>
+          <li><strong>Agents</strong><span>Benchmark agent, code search, figure agent, code agent, and universal cross-domain codegen</span></li>
+          <li><strong>Safety</strong><span>Sandbox validation, SSRF guards, citation verification, HITL policies, and regression checks</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Artifact API -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>Artifact API</h2>
+      <p>Pipeline behavior is heavily artifact-driven, so file names and promotion rules are part of the practical interface.</p>
+    </div>
+
+    <div class="artifact-panel">
+      <div class="artifact-tree" aria-label="Runtime artifact tree">
+        <div class="tree-line">artifacts/rc-YYYYMMDD-HHMMSS-hash/</div>
+        <div class="tree-line tree-indent">checkpoint.json</div>
+        <div class="tree-line tree-indent">heartbeat.json</div>
+        <div class="tree-line tree-indent">pipeline_summary.json</div>
+        <div class="tree-line tree-indent">experiment_summary_best.json</div>
+        <div class="tree-line tree-indent">analysis_best.md</div>
+        <div class="tree-line tree-indent">decision_history.json</div>
+        <div class="tree-line tree-indent">stage-01/ ... stage-23/</div>
+      </div>
+      <div class="artifact-copy">
+        <h3>Why It Matters</h3>
+        <p>Downstream stages find inputs by contract names or by scanning stage directories. That keeps resume and repair flexible, but it also means artifact naming, best-result promotion, and package assembly need to remain stable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quality Surface -->
+<section class="section" style="background: var(--color-bg-alt);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Verification Surface</h2>
+      <p>High-signal tests cover the areas most likely to affect pipeline correctness and user-facing behavior.</p>
+    </div>
+
+    <div class="coverage-grid">
+      <div class="coverage-card">
+        <h3>Pipeline Core</h3>
+        <p><code>tests/test_rc_executor.py</code>, <code>tests/test_rc_runner.py</code>, <code>tests/test_rc_config.py</code>, and <code>tests/test_rc_cli.py</code> cover orchestration, contracts, runtime config, and CLI behavior.</p>
+      </div>
+      <div class="coverage-card">
+        <h3>Experiment and Agents</h3>
+        <p><code>tests/test_code_agent.py</code>, <code>tests/test_figure_agent.py</code>, sandbox tests, benchmark tests, and universal codegen integration tests validate generation and execution paths.</p>
+      </div>
+      <div class="coverage-card">
+        <h3>Web and Literature</h3>
+        <p>Web crawler/search/platform tests, citation verification tests, PDF extraction tests, and literature client tests guard external-data behavior and SSRF constraints.</p>
+      </div>
+      <div class="coverage-card">
+        <h3>Publishing</h3>
+        <p>Template, LaTeX, BibTeX, verified registry, and paper quality tests protect final manuscript assembly and number verification.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Notes -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>Architecture Notes</h2>
+      <p>Repo memory also tracks mismatches and edge cases that future changes should keep visible.</p>
+    </div>
+
+    <div class="notes-grid">
+      <details class="note-card" open>
+        <summary>Version and packaging drift</summary>
+        <p>The README describes newer v0.4.0-era features while <code>pyproject.toml</code> declares version <code>0.3.1</code>. The wheel package list includes <code>sibyl</code> and <code>arc</code>, but matching source directories were not present during the scan.</p>
+      </details>
+      <details class="note-card">
+        <summary>Guarded optional modules</summary>
+        <p><code>runner.py</code> references optional modules such as <code>researchclaw.pipeline.event_log</code> and <code>researchclaw.cost_tracker</code> through guarded imports. Missing optional files degrade silently.</p>
+      </details>
+      <details class="note-card">
+        <summary>Gate semantics</summary>
+        <p><code>QUALITY_GATE</code> is both a gate stage and listed as noncritical, so blocking behavior depends on runner and executor flags.</p>
+      </details>
+      <details class="note-card">
+        <summary>Citation ordering</summary>
+        <p><code>CITATION_VERIFY</code> runs after <code>EXPORT_PUBLISH</code>, even though comments indicate citation checks are intended to block export of hallucinated citations.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <ul class="footer-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="pipeline.html">Pipeline</a></li>
+    <li><a href="codebase.html">Codebase</a></li>
+    <li><a href="features.html">Features</a></li>
+    <li><a href="papers.html">Papers</a></li>
+    <li><a href="getting-started.html">Get Started</a></li>
+    <li><a href="https://github.com/aiming-lab/AutoResearchClaw" target="_blank">GitHub</a></li>
+  </ul>
+  <p>AutoResearchClaw &mdash; Autonomous Research Paper Generation Pipeline</p>
+</footer>
+
+</body>
+</html>

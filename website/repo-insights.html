@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Insights &mdash; AutoResearchClaw</title>
+  <meta name="description" content="Visual map of the AutoResearchClaw codebase overview, scripts overview, and auto-generated known issues.">
+  <link rel="icon" href="assets/logo.png" type="image/png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root {
+      --insight-teal: #2dd4bf;
+      --insight-amber: #f59e0b;
+      --insight-rose: #fb7185;
+      --insight-lime: #a3e635;
+      --insight-indigo: #818cf8;
+      --insight-panel: rgba(30, 41, 59, 0.72);
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 18% 10%, rgba(45, 212, 191, 0.14), transparent 26rem),
+        radial-gradient(circle at 90% 8%, rgba(251, 113, 133, 0.11), transparent 24rem),
+        linear-gradient(180deg, #0f172a 0%, #111827 46%, #0f172a 100%);
+    }
+
+    .insights-hero {
+      min-height: 92vh;
+      padding: 8rem 0 3rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .eyebrow {
+      color: var(--insight-teal);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.9rem;
+    }
+
+    .insights-hero h1 {
+      font-size: clamp(2.3rem, 5vw, 4.4rem);
+      line-height: 1.04;
+      max-width: 680px;
+      margin-bottom: 1rem;
+    }
+
+    .hero-copy {
+      color: var(--color-text-muted);
+      font-size: 1.05rem;
+      max-width: 620px;
+      line-height: 1.65;
+    }
+
+    .source-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-top: 1.6rem;
+    }
+
+    .issue-jump-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.4rem;
+    }
+
+    .source-pill,
+    .filter-button {
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--color-text);
+      border-radius: 8px;
+      padding: 0.5rem 0.7rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      line-height: 1.35;
+    }
+
+    .source-pill {
+      overflow-wrap: anywhere;
+    }
+
+    .hero-map {
+      position: relative;
+      min-height: 520px;
+      padding: 1rem;
+    }
+
+    .system-flow {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .flow-node {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.68);
+      padding: 1rem;
+      box-shadow: 0 16px 60px rgba(0, 0, 0, 0.22);
+    }
+
+    .flow-node strong {
+      display: block;
+      color: var(--color-white);
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .flow-node span {
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+
+    .flow-node.primary {
+      border-color: rgba(45, 212, 191, 0.5);
+      background: linear-gradient(135deg, rgba(45, 212, 191, 0.17), rgba(15, 23, 42, 0.78));
+    }
+
+    .flow-node.alert {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: linear-gradient(135deg, rgba(251, 113, 133, 0.15), rgba(15, 23, 42, 0.78));
+    }
+
+    .flow-arrow {
+      color: rgba(226, 232, 240, 0.42);
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 1rem;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 0.8rem;
+      margin-top: -3.4rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .metric {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      background: var(--insight-panel);
+      padding: 1rem;
+      min-height: 114px;
+    }
+
+    .metric-value {
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      font-weight: 800;
+      line-height: 1;
+      color: var(--color-white);
+    }
+
+    .metric-label {
+      margin-top: 0.55rem;
+      color: var(--color-text-muted);
+      font-size: 0.8rem;
+      line-height: 1.35;
+    }
+
+    .metric:nth-child(1) .metric-value { color: var(--insight-teal); }
+    .metric:nth-child(2) .metric-value { color: var(--insight-amber); }
+    .metric:nth-child(3) .metric-value { color: var(--color-primary); }
+    .metric:nth-child(4) .metric-value { color: var(--insight-lime); }
+    .metric:nth-child(5) .metric-value { color: var(--insight-rose); }
+    .metric:nth-child(6) .metric-value { color: var(--insight-indigo); }
+
+    .issues-snapshot {
+      margin-top: 1rem;
+      border: 1px solid rgba(251, 113, 133, 0.34);
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(251, 113, 133, 0.12), rgba(15, 23, 42, 0.72));
+      padding: 1rem;
+    }
+
+    .issues-snapshot-header {
+      display: flex;
+      gap: 1rem;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.85rem;
+    }
+
+    .issues-snapshot-header h2 {
+      font-size: 1rem;
+      line-height: 1.25;
+    }
+
+    .issues-snapshot-header a {
+      color: var(--insight-teal);
+      font-size: 0.8rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .snapshot-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7rem;
+    }
+
+    .snapshot-card {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.58);
+      padding: 0.8rem;
+      min-height: 98px;
+    }
+
+    .snapshot-value {
+      display: block;
+      color: var(--color-white);
+      font-size: 1.35rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.35rem;
+    }
+
+    .snapshot-card span:last-child {
+      display: block;
+      color: var(--color-text-muted);
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+
+    .insight-section {
+      padding: 4.5rem 0;
+    }
+
+    .section-kicker {
+      color: var(--insight-teal);
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 0.45rem;
+    }
+
+    .section-title-row {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title-row h2 {
+      font-size: clamp(1.55rem, 3vw, 2.35rem);
+      line-height: 1.12;
+    }
+
+    .section-title-row p {
+      color: var(--color-text-muted);
+      max-width: 560px;
+      line-height: 1.55;
+    }
+
+    .pipeline-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .phase-panel {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.55);
+      overflow: hidden;
+    }
+
+    .phase-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 0.9rem;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.17);
+      min-height: 76px;
+    }
+
+    .phase-letter {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(45, 212, 191, 0.18);
+      color: var(--insight-teal);
+      font-weight: 800;
+      flex: 0 0 auto;
+    }
+
+    .phase-header h3 {
+      font-size: 0.94rem;
+      line-height: 1.25;
+    }
+
+    .phase-header span {
+      display: block;
+      color: var(--color-text-muted);
+      font-size: 0.72rem;
+      margin-top: 0.15rem;
+    }
+
+    .stage-stack {
+      display: grid;
+      gap: 0.55rem;
+      padding: 0.85rem;
+    }
+
+    .stage-card {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      padding: 0.75rem;
+      background: rgba(30, 41, 59, 0.62);
+      min-height: 120px;
+    }
+
+    .stage-topline {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.45rem;
+    }
+
+    .stage-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 26px;
+      border-radius: 7px;
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--color-primary);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .stage-card.gate {
+      border-color: rgba(245, 158, 11, 0.55);
+    }
+
+    .stage-card.gate .stage-num {
+      background: rgba(245, 158, 11, 0.18);
+      color: var(--insight-amber);
+    }
+
+    .stage-name {
+      color: var(--color-white);
+      font-size: 0.84rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 0.35rem;
+    }
+
+    .stage-artifact {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .mini-badge {
+      border-radius: 7px;
+      padding: 0.16rem 0.38rem;
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--color-text-muted);
+      font-size: 0.64rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .loop-strip {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .loop-note {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.62);
+      padding: 1rem;
+    }
+
+    .loop-note strong {
+      color: var(--color-white);
+      display: block;
+      margin-bottom: 0.35rem;
+    }
+
+    .loop-note span {
+      color: var(--color-text-muted);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    .inventory-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    .bar-list {
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 0.8fr) minmax(180px, 1fr) 42px;
+      gap: 0.75rem;
+      align-items: center;
+      border: 1px solid rgba(148, 163, 184, 0.17);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.48);
+      padding: 0.65rem 0.75rem;
+    }
+
+    .bar-label {
+      color: var(--color-text);
+      font-size: 0.82rem;
+      line-height: 1.3;
+    }
+
+    .bar-track {
+      position: relative;
+      height: 10px;
+      background: rgba(148, 163, 184, 0.14);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--width);
+      min-width: 3%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--insight-teal), var(--insight-amber));
+    }
+
+    .bar-count {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      text-align: right;
+    }
+
+    .focus-list {
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .focus-card,
+    .subsystem-card,
+    .issue-card {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.58);
+      padding: 1rem;
+    }
+
+    .focus-card h3,
+    .subsystem-card h3,
+    .issue-card h3 {
+      font-size: 0.95rem;
+      line-height: 1.3;
+      margin-bottom: 0.35rem;
+      color: var(--color-white);
+    }
+
+    .focus-card p,
+    .subsystem-card p,
+    .issue-card p {
+      color: var(--color-text-muted);
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+
+    .subsystem-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .subsystem-card {
+      min-height: 156px;
+    }
+
+    .subsystem-path {
+      display: inline-block;
+      color: var(--insight-teal);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      margin-bottom: 0.55rem;
+      overflow-wrap: anywhere;
+    }
+
+    .issues-toolbar {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+
+    .filter-button {
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-size: 0.78rem;
+      font-weight: 700;
+      transition: border-color var(--transition), background var(--transition), color var(--transition);
+    }
+
+    .filter-button.active,
+    .filter-button:hover {
+      color: #0f172a;
+      border-color: transparent;
+      background: var(--insight-teal);
+    }
+
+    .issue-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .issue-card {
+      min-height: 218px;
+    }
+
+    .issue-meta {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+
+    .risk-chip {
+      display: inline-flex;
+      border-radius: 7px;
+      padding: 0.18rem 0.45rem;
+      font-size: 0.66rem;
+      font-weight: 800;
+      line-height: 1.25;
+      text-transform: uppercase;
+    }
+
+    .risk-critical { background: rgba(251, 113, 133, 0.18); color: var(--insight-rose); }
+    .risk-high { background: rgba(245, 158, 11, 0.18); color: var(--insight-amber); }
+    .risk-medium { background: rgba(56, 189, 248, 0.16); color: var(--color-primary); }
+
+    .issue-paths {
+      margin-top: 0.7rem;
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .source-footer {
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+      padding-top: 1.2rem;
+      color: var(--color-text-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 1060px) {
+      .hero-grid,
+      .inventory-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid,
+      .pipeline-board,
+      .snapshot-grid,
+      .subsystem-grid,
+      .issue-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .metric-grid {
+        margin-top: 1rem;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .insights-hero {
+        min-height: auto;
+        padding-top: 6.5rem;
+      }
+
+      .hero-map {
+        min-height: auto;
+        padding: 0;
+      }
+
+      .metric-grid,
+      .pipeline-board,
+      .loop-strip,
+      .snapshot-grid,
+      .subsystem-grid,
+      .issue-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-title-row {
+        display: block;
+      }
+
+      .section-title-row p {
+        margin-top: 0.75rem;
+      }
+
+      .bar-row {
+        grid-template-columns: 1fr 58px;
+      }
+
+      .bar-track {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="container">
+    <a href="index.html" class="nav-brand"><img src="assets/logo.png" alt="Logo">AutoResearchClaw</a>
+    <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="pipeline.html">Pipeline</a></li>
+      <li><a href="features.html">Features</a></li>
+      <li><a href="papers.html">Papers</a></li>
+      <li><a href="getting-started.html">Get Started</a></li>
+      <li><a href="repo-insights.html" class="active">Repo Insights</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main>
+  <section class="insights-hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">Repository intelligence map</div>
+          <h1>AutoResearchClaw at a glance</h1>
+          <p class="hero-copy">
+            A visual summary of the autonomous research pipeline, script inventory, subsystem surfaces, and current auto-generated issue register.
+          </p>
+          <div class="source-strip" aria-label="Source markdown files">
+            <span class="source-pill">repo_info/codebase_overview.md</span>
+            <span class="source-pill">repo_info/scripts_overview.md</span>
+            <span class="source-pill">repo_info/known_issues_auto_generated.md</span>
+          </div>
+          <div class="issue-jump-row">
+            <a class="btn btn-primary" href="#known-issues">View 19 Known Issues</a>
+            <a class="btn btn-outline" href="#pipeline">View Pipeline Map</a>
+          </div>
+        </div>
+        <div class="hero-map" aria-label="System flow overview">
+          <div class="system-flow">
+            <div class="flow-node primary">
+              <strong>Input and configuration</strong>
+              <span>Topic string, YAML config, RCConfig dataclasses, prompt manager, hardware profile.</span>
+            </div>
+            <div class="flow-arrow">v</div>
+            <div class="flow-node">
+              <strong>Pipeline orchestration</strong>
+              <span>runner.py, executor.py, stages.py, contracts.py, and shared stage helpers coordinate 23 stages.</span>
+            </div>
+            <div class="flow-arrow">v</div>
+            <div class="flow-node">
+              <strong>Stage implementations</strong>
+              <span>Scoping, literature, synthesis, experiment design, execution, analysis, writing, review, and publishing.</span>
+            </div>
+            <div class="flow-arrow">v</div>
+            <div class="flow-node">
+              <strong>Subsystem ring</strong>
+              <span>LLM, experiment, literature, agents, HITL, memory, knowledge, skills, domains, templates, web, server, MCP, Overleaf.</span>
+            </div>
+            <div class="flow-arrow">v</div>
+            <div class="flow-node alert">
+              <strong>Known risk surface</strong>
+              <span>19 auto-generated issues across security, reliability, architecture, configuration, and operations.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-grid" aria-label="Repository metrics">
+        <div class="metric">
+          <div class="metric-value">23</div>
+          <div class="metric-label">pipeline stages</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">3</div>
+          <div class="metric-label">human approval gates</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">21</div>
+          <div class="metric-label">script inventory sections</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">138</div>
+          <div class="metric-label">documented files or modules</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">19</div>
+          <div class="metric-label">auto-generated known issues</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value">350</div>
+          <div class="metric-label">listed functions, classes, or APIs</div>
+        </div>
+      </div>
+
+      <div class="issues-snapshot" aria-label="Known issues snapshot">
+        <div class="issues-snapshot-header">
+          <h2>Known issues are included below</h2>
+          <a href="#known-issues">Jump to full issue register</a>
+        </div>
+        <div class="snapshot-grid">
+          <div class="snapshot-card">
+            <span class="snapshot-value">19</span>
+            <span>auto-generated findings from known_issues_auto_generated.md</span>
+          </div>
+          <div class="snapshot-card">
+            <span class="snapshot-value">6</span>
+            <span>critical security findings: shell injection, SSRF, CORS/auth, sandbox, SSH, Docker</span>
+          </div>
+          <div class="snapshot-card">
+            <span class="snapshot-value">8</span>
+            <span>high-risk reliability, config, security, and operations findings</span>
+          </div>
+          <div class="snapshot-card">
+            <span class="snapshot-value">5</span>
+            <span>medium-risk architecture, reliability, and operations findings</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="insight-section" id="pipeline">
+    <div class="container">
+      <div class="section-title-row">
+        <div>
+          <div class="section-kicker">Pipeline topology</div>
+          <h2>Eight phases from topic to verified submission</h2>
+        </div>
+        <p>The codebase overview describes a 23-stage flow with gates at literature screening, experiment design, and final quality review.</p>
+      </div>
+      <div class="pipeline-board" id="pipelineBoard"></div>
+      <div class="loop-strip">
+        <div class="loop-note">
+          <strong>Research decision loop</strong>
+          <span>Stage 15 can proceed to paper writing, pivot back to Stage 8, or refine by returning to Stage 13.</span>
+        </div>
+        <div class="loop-note">
+          <strong>Experiment repair loop</strong>
+          <span>Between Stages 14 and 15, diagnosis, repair, and re-run can cycle up to three times for experiment failures.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="insight-section" id="known-issues" style="background: rgba(15, 23, 42, 0.46);">
+    <div class="container">
+      <div class="section-title-row">
+        <div>
+          <div class="section-kicker">Script inventory</div>
+          <h2>Where the implementation surface is concentrated</h2>
+        </div>
+        <p>The scripts overview documents 21 areas. HITL, experiment execution, infrastructure, literature, and stage implementations are the largest described surfaces.</p>
+      </div>
+      <div class="inventory-layout">
+        <div class="bar-list" id="scriptBars"></div>
+        <div class="focus-list">
+          <div class="focus-card">
+            <h3>Highest-density area</h3>
+            <p>HITL has 23 documented entries, spanning session state, intervention models, smart pause, collaboration, adapters, TUI, workshops, and persistence.</p>
+          </div>
+          <div class="focus-card">
+            <h3>Execution-critical areas</h3>
+            <p>Pipeline core, stage implementations, experiment modules, literature modules, and pipeline intelligence form the main execution path.</p>
+          </div>
+          <div class="focus-card">
+            <h3>Risk-adjacent areas</h3>
+            <p>The known issue register repeatedly touches servers, SSH, Slurm, sandbox execution, SSRF protection, CORS/auth, runner resilience, and config validation.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="insight-section">
+    <div class="container">
+      <div class="section-title-row">
+        <div>
+          <div class="section-kicker">Subsystem map</div>
+          <h2>Major modules and their roles</h2>
+        </div>
+        <p>The subsystem summary splits the repo into orchestration, research intelligence, execution, writing, user interaction, memory, and integration layers.</p>
+      </div>
+      <div class="subsystem-grid" id="subsystemGrid"></div>
+    </div>
+  </section>
+
+  <section class="insight-section" style="background: rgba(15, 23, 42, 0.46);">
+    <div class="container">
+      <div class="section-title-row">
+        <div>
+          <div class="section-kicker">Known issue register</div>
+          <h2>19 findings grouped by operational risk</h2>
+        </div>
+        <p>Issue text is condensed from the auto-generated known issues file so the hotspots can be scanned quickly.</p>
+      </div>
+      <div class="issues-toolbar" aria-label="Issue filters">
+        <button class="filter-button active" type="button" data-filter="all">All</button>
+        <button class="filter-button" type="button" data-filter="security">Security</button>
+        <button class="filter-button" type="button" data-filter="reliability">Reliability</button>
+        <button class="filter-button" type="button" data-filter="architecture">Architecture</button>
+        <button class="filter-button" type="button" data-filter="config">Config</button>
+        <button class="filter-button" type="button" data-filter="operations">Operations</button>
+      </div>
+      <div class="issue-grid" id="issueGrid"></div>
+    </div>
+  </section>
+
+  <section class="insight-section">
+    <div class="container">
+      <div class="source-footer">
+        Generated from the current local markdown snapshots in
+        <span class="source-pill">.github/harness_coding_instructions/repo_info/</span>.
+        Empty companion files observed during generation:
+        <span class="source-pill">known_issues.md</span>
+        <span class="source-pill">update_logs.md</span>.
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <ul class="footer-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="pipeline.html">Pipeline</a></li>
+      <li><a href="features.html">Features</a></li>
+      <li><a href="getting-started.html">Get Started</a></li>
+    </ul>
+    <p>&copy; 2026 AutoResearchClaw. MIT License.</p>
+  </div>
+</footer>
+
+<script>
+  const phases = [
+    {
+      letter: "A",
+      name: "Research Scoping",
+      range: "Stages 1-2",
+      stages: [
+        { number: 1, name: "TOPIC_INIT", artifact: "goal.md, hardware_profile.json" },
+        { number: 2, name: "PROBLEM_DECOMPOSE", artifact: "problem_tree.md" }
+      ]
+    },
+    {
+      letter: "B",
+      name: "Literature Discovery",
+      range: "Stages 3-6",
+      stages: [
+        { number: 3, name: "SEARCH_STRATEGY", artifact: "search_plan.yaml, queries.json" },
+        { number: 4, name: "LITERATURE_COLLECT", artifact: "candidates.jsonl" },
+        { number: 5, name: "LITERATURE_SCREEN", artifact: "shortlist.jsonl", gate: true },
+        { number: 6, name: "KNOWLEDGE_EXTRACT", artifact: "cards/*.md" }
+      ]
+    },
+    {
+      letter: "C",
+      name: "Knowledge Synthesis",
+      range: "Stages 7-8",
+      stages: [
+        { number: 7, name: "SYNTHESIS", artifact: "synthesis.md" },
+        { number: 8, name: "HYPOTHESIS_GEN", artifact: "hypotheses.md" }
+      ]
+    },
+    {
+      letter: "D",
+      name: "Experiment Design",
+      range: "Stages 9-11",
+      stages: [
+        { number: 9, name: "EXPERIMENT_DESIGN", artifact: "exp_plan.yaml", gate: true },
+        { number: 10, name: "CODE_GENERATION", artifact: "experiment/*.py" },
+        { number: 11, name: "RESOURCE_PLANNING", artifact: "schedule.json" }
+      ]
+    },
+    {
+      letter: "E",
+      name: "Experiment Execution",
+      range: "Stages 12-13",
+      stages: [
+        { number: 12, name: "EXPERIMENT_RUN", artifact: "runs/*.json" },
+        { number: 13, name: "ITERATIVE_REFINE", artifact: "refinement_log.json" }
+      ]
+    },
+    {
+      letter: "F",
+      name: "Analysis and Decision",
+      range: "Stages 14-15",
+      stages: [
+        { number: 14, name: "RESULT_ANALYSIS", artifact: "analysis.md, experiment_summary.json" },
+        { number: 15, name: "RESEARCH_DECISION", artifact: "decision.md" }
+      ]
+    },
+    {
+      letter: "G",
+      name: "Paper Writing",
+      range: "Stages 16-19",
+      stages: [
+        { number: 16, name: "PAPER_OUTLINE", artifact: "outline.md" },
+        { number: 17, name: "PAPER_DRAFT", artifact: "paper_draft.md, FigureAgent" },
+        { number: 18, name: "PEER_REVIEW", artifact: "reviews.json" },
+        { number: 19, name: "PAPER_REVISION", artifact: "paper_revised.md" }
+      ]
+    },
+    {
+      letter: "H",
+      name: "Finalization",
+      range: "Stages 20-23",
+      stages: [
+        { number: 20, name: "QUALITY_GATE", artifact: "quality_report.json", gate: true },
+        { number: 21, name: "KNOWLEDGE_ARCHIVE", artifact: "retrospective.md" },
+        { number: 22, name: "EXPORT_PUBLISH", artifact: "deliverables/" },
+        { number: 23, name: "CITATION_VERIFY", artifact: "verification_report.json" }
+      ]
+    }
+  ];
+
+  const scriptSections = [
+    ["Entry Points", 3],
+    ["Configuration", 1],
+    ["Pipeline Core", 6],
+    ["Stage Implementations", 9],
+    ["Pipeline Intelligence", 6],
+    ["LLM Integration", 5],
+    ["Literature Module", 9],
+    ["Experiment Module", 14],
+    ["Agents Module", 4],
+    ["HITL Module", 23],
+    ["Memory Module", 5],
+    ["Knowledge Module", 2],
+    ["Domains Module", 5],
+    ["Templates Module", 4],
+    ["Web Module", 6],
+    ["Skills Module", 4],
+    ["Evolution Module", 2],
+    ["Core Utility Modules", 9],
+    ["Infrastructure Modules", 14],
+    ["Scripts and Tests", 3],
+    ["Configuration Files", 4]
+  ];
+
+  const subsystems = [
+    ["CLI / Entry", "cli.py, __main__.py", "User-facing CLI with run, validation, doctor, serve, MCP, Overleaf, project, dashboard, and setup commands."],
+    ["Config", "config.py", "Typed YAML configuration through frozen dataclasses for project, LLM, experiment, security, HITL, web, server, and integrations."],
+    ["Pipeline Core", "pipeline/runner.py, executor.py, stages.py", "Checkpointed 23-stage state machine with gates, rollback, HITL hooks, and per-stage dispatch."],
+    ["LLM Integration", "llm/", "OpenAI-compatible client layer with provider adapters and fallback chains."],
+    ["Experiment", "experiment/", "Local, Docker, SSH, Colab, and agentic experiment execution with validation, harnessing, metrics, and visualization."],
+    ["Literature", "literature/", "Unified academic search across OpenAlex, Semantic Scholar, arXiv, citation verification, novelty, cache, and trends."],
+    ["Multi-Agents", "agents/", "BenchmarkAgent, FigureAgent, and CodeSearcher support benchmark selection, figures, and code search."],
+    ["Code Generation", "pipeline/code_agent.py, opencode_bridge.py", "Five-phase code generation and optional OpenCode Beast Mode for complex experiments."],
+    ["Anti-Fabrication", "pipeline/verified_registry.py, paper_verifier.py", "Hard numeric verification between experiment results, generated paper claims, and citations."],
+    ["HITL", "hitl/", "Human-in-the-loop sessions, gates, collaboration, smart pause, cost guard, adapters, TUI, and workshops."],
+    ["Memory", "memory/", "JSONL-backed persistent memory with retrieval, embeddings, decay, and experiment memory."],
+    ["Knowledge", "knowledge/", "Knowledge base and graph infrastructure for archived research findings."],
+    ["Skills", "skills/", "Dynamic skill loading, registry, matching, and built-in skill library."],
+    ["Evolution", "evolution.py, evolution_aevolve.py", "Cross-run learning from pipeline runs and evolution overlays."],
+    ["Domains", "domains/", "Domain detection, prompt adaptation, experiment schemas, adapters, and 22 profiles."],
+    ["Templates", "templates/", "Conference templates, conversion, and LaTeX compilation."],
+    ["Web", "web/", "Search, crawling, scholar lookup, PDF extraction, SSRF guard, and web agent."],
+    ["Server", "server/", "FastAPI interface, routes, auth middleware, dialog layer, and WebSocket dashboard."],
+    ["Overleaf", "overleaf/", "Bidirectional Overleaf git sync."],
+    ["MCP", "mcp/", "Model Context Protocol server and tool exposure."],
+    ["MetaClaw", "metaclaw_bridge/", "Cross-run lesson-to-skill conversion and skill feedback bridge."],
+    ["Trends", "trends/", "Research trend analysis and auto-topic generation."],
+    ["Quality", "quality.py", "Template and placeholder detection for generated papers."]
+  ];
+
+  const issues = [
+    {
+      id: 1,
+      title: "Command injection in Slurm/SSH executors",
+      category: "security",
+      risk: "critical",
+      summary: "Unsanitized job IDs and commands are interpolated into remote shell strings and sbatch scripts.",
+      paths: "servers/slurm_executor.py; servers/ssh_executor.py"
+    },
+    {
+      id: 2,
+      title: "SSRF DNS rebinding / TOCTOU gap",
+      category: "security",
+      risk: "critical",
+      summary: "URL validation resolves hostnames separately from the later HTTP request; search client also misses the SSRF check.",
+      paths: "web/_ssrf.py; web/search.py"
+    },
+    {
+      id: 3,
+      title: "Insecure server CORS/auth defaults",
+      category: "security",
+      risk: "critical",
+      summary: "Default empty auth token and wildcard CORS with credentials can expose control and project endpoints.",
+      paths: "config.py; server/app.py"
+    },
+    {
+      id: 4,
+      title: "Docker token exposure and privilege issues",
+      category: "security",
+      risk: "critical",
+      summary: "HF tokens pass through command-line environment flags, while setup-only networking grants NET_ADMIN without effective isolation.",
+      paths: "experiment/docker_sandbox.py"
+    },
+    {
+      id: 5,
+      title: "Local sandbox runs generated code without isolation",
+      category: "security",
+      risk: "critical",
+      summary: "LLM-generated Python runs as the current user with full host environment and no enforced memory limits.",
+      paths: "experiment/sandbox.py; config.py"
+    },
+    {
+      id: 6,
+      title: "SSH host key verification disabled",
+      category: "security",
+      risk: "critical",
+      summary: "SSH commands use StrictHostKeyChecking=no, making remote execution paths vulnerable to interception.",
+      paths: "servers/ssh_executor.py; servers/slurm_executor.py; experiment/ssh_sandbox.py"
+    },
+    {
+      id: 7,
+      title: "Pipeline runner silences critical failures",
+      category: "reliability",
+      risk: "high",
+      summary: "Integration hooks catch broad exceptions and drop failures, including cost tracking, logging, memory, and pitfall detection issues.",
+      paths: "pipeline/runner.py"
+    },
+    {
+      id: 8,
+      title: "Heartbeat file written non-atomically",
+      category: "reliability",
+      risk: "medium",
+      summary: "Direct heartbeat writes can be read while truncated, confusing the sentinel watchdog.",
+      paths: "pipeline/runner.py"
+    },
+    {
+      id: 9,
+      title: "_helpers.py monolith and eager import graph",
+      category: "architecture",
+      risk: "medium",
+      summary: "A large helper module and top-level imports of all stage implementations slow startup and make isolated stage testing brittle.",
+      paths: "pipeline/_helpers.py; pipeline/executor.py"
+    },
+    {
+      id: 10,
+      title: "Config validation misses bounds and security fields",
+      category: "config",
+      risk: "high",
+      summary: "Invalid numeric values and security-sensitive settings can pass validation and fail later in the run.",
+      paths: "config.py"
+    },
+    {
+      id: 11,
+      title: "HITL session auto-approves on adapter failure",
+      category: "reliability",
+      risk: "high",
+      summary: "Callback failures can fall through to timeout-driven auto-approval, bypassing gate reviews.",
+      paths: "hitl/session.py"
+    },
+    {
+      id: 12,
+      title: "SSH remote config defaults to /tmp",
+      category: "security",
+      risk: "high",
+      summary: "Shared temporary directories invite symlink attacks, tampering, cleanup races, and data exposure on clusters.",
+      paths: "config.py"
+    },
+    {
+      id: 13,
+      title: "No concurrent run protection",
+      category: "reliability",
+      risk: "high",
+      summary: "Multiple pipeline instances can write to the same run directory and corrupt checkpoints, heartbeats, and stage outputs.",
+      paths: "pipeline/runner.py"
+    },
+    {
+      id: 14,
+      title: "HITL config typed as object",
+      category: "architecture",
+      risk: "medium",
+      summary: "RCConfig.hitl loses static type safety and forces runtime getattr patterns.",
+      paths: "config.py"
+    },
+    {
+      id: 15,
+      title: "LLM client uses fake User-Agent string",
+      category: "operations",
+      risk: "medium",
+      summary: "The client identifies as a Chrome browser fingerprint, which can violate provider expectations or terms.",
+      paths: "llm/client.py"
+    },
+    {
+      id: 16,
+      title: "Silent model downgrade in LLM fallback chain",
+      category: "reliability",
+      risk: "high",
+      summary: "Fallbacks can reduce output quality without per-stage attribution of the model that produced artifacts.",
+      paths: "llm/client.py"
+    },
+    {
+      id: 17,
+      title: "Literature search has no minimum result threshold",
+      category: "reliability",
+      risk: "high",
+      summary: "API failures can leave the pipeline proceeding with too few or zero real references.",
+      paths: "literature/search.py; stage_impls/_literature.py"
+    },
+    {
+      id: 18,
+      title: "WebSocket auth token passed in query string",
+      category: "security",
+      risk: "high",
+      summary: "Tokens can leak through logs, browser history, and proxies.",
+      paths: "server/middleware/auth.py"
+    },
+    {
+      id: 19,
+      title: "Potential zombie processes on sandbox timeout",
+      category: "operations",
+      risk: "high",
+      summary: "Timeout handling may stop waiting without guaranteeing that child process trees are terminated.",
+      paths: "experiment/sandbox.py"
+    }
+  ];
+
+  function renderPipeline() {
+    const board = document.getElementById("pipelineBoard");
+    board.innerHTML = phases.map((phase) => `
+      <article class="phase-panel">
+        <div class="phase-header">
+          <div class="phase-letter">${phase.letter}</div>
+          <div>
+            <h3>${phase.name}</h3>
+            <span>${phase.range}</span>
+          </div>
+        </div>
+        <div class="stage-stack">
+          ${phase.stages.map((stage) => `
+            <div class="stage-card${stage.gate ? " gate" : ""}">
+              <div class="stage-topline">
+                <span class="stage-num">${stage.number}</span>
+                ${stage.gate ? '<span class="mini-badge">GATE</span>' : ""}
+              </div>
+              <div class="stage-name">${stage.name}</div>
+              <div class="stage-artifact">${stage.artifact}</div>
+            </div>
+          `).join("")}
+        </div>
+      </article>
+    `).join("");
+  }
+
+  function renderScriptBars() {
+    const max = Math.max(...scriptSections.map((section) => section[1]));
+    const bars = document.getElementById("scriptBars");
+    bars.innerHTML = scriptSections.map(([label, count]) => {
+      const width = Math.round((count / max) * 100);
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${label}</div>
+          <div class="bar-track" aria-hidden="true"><div class="bar-fill" style="--width: ${width}%"></div></div>
+          <div class="bar-count">${count}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderSubsystems() {
+    const grid = document.getElementById("subsystemGrid");
+    grid.innerHTML = subsystems.map(([name, path, role]) => `
+      <article class="subsystem-card">
+        <span class="subsystem-path">${path}</span>
+        <h3>${name}</h3>
+        <p>${role}</p>
+      </article>
+    `).join("");
+  }
+
+  function riskClass(risk) {
+    return risk === "critical" ? "risk-critical" : risk === "high" ? "risk-high" : "risk-medium";
+  }
+
+  function renderIssues(filter = "all") {
+    const grid = document.getElementById("issueGrid");
+    const visible = issues.filter((issue) => filter === "all" || issue.category === filter);
+    grid.innerHTML = visible.map((issue) => `
+      <article class="issue-card">
+        <div class="issue-meta">
+          <span class="risk-chip ${riskClass(issue.risk)}">${issue.risk}</span>
+          <span class="risk-chip risk-medium">${issue.category}</span>
+          <span class="mini-badge">#${issue.id}</span>
+        </div>
+        <h3>${issue.title}</h3>
+        <p>${issue.summary}</p>
+        <div class="issue-paths">${issue.paths}</div>
+      </article>
+    `).join("");
+  }
+
+  document.querySelectorAll(".filter-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".filter-button").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      renderIssues(button.dataset.filter);
+    });
+  });
+
+  renderPipeline();
+  renderScriptBars();
+  renderSubsystems();
+  renderIssues();
+</script>
+</body>
+</html>

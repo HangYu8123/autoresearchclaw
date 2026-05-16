@@ -1,0 +1,3 @@
+[submodule ".github/harness_coding_instructions"]
+	path = .github/harness_coding_instructions
+	url = https://github.com/HangYu8123/harness_coding_instructions.git
