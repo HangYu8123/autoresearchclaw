@@ -21,9 +21,17 @@ from researchclaw.llm.client import (
 class _DummyHTTPResponse:
     def __init__(self, payload: Mapping[str, Any]):
         self._payload = payload
+        self._data = json.dumps(self._payload).encode("utf-8")
+        self._pos = 0
 
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode("utf-8")
+    def read(self, size: int = -1) -> bytes:
+        if size == -1 or size is None:
+            chunk = self._data[self._pos:]
+            self._pos = len(self._data)
+        else:
+            chunk = self._data[self._pos : self._pos + size]
+            self._pos += len(chunk)
+        return chunk
 
     def __enter__(self) -> _DummyHTTPResponse:
         return self

@@ -14,6 +14,7 @@ import yaml
 from researchclaw.adapters import AdapterBundle
 from researchclaw.config import RCConfig
 from researchclaw.llm.client import LLMClient
+from researchclaw.writing_guide import format_writing_tips
 from researchclaw.pipeline._domain import _detect_domain, _is_ml_domain
 from researchclaw.pipeline._helpers import (
     StageResult,
@@ -419,11 +420,15 @@ def _write_paper_sections(
         "Output markdown with ## headers. Do NOT include a References section.\n"
         "IMPORTANT: Start DIRECTLY with '## Title'. Do NOT include any preamble, "
         "data verification, condition listing, or metric enumeration before the title. "
-        "The paper should read like a published manuscript, not a data report."
+        "The paper should read like a published manuscript, not a data report.\n\n"
+        + format_writing_tips(["title", "figure_1", "introduction"])
     )
     # R14-1: Higher token limit for reasoning models
+    # P1: DeepSeek v4 gets 64K to account for CoT reasoning overhead
     _paper_max_tokens = 12000
-    if any(model_name.startswith(p) for p in ("gpt-5", "o3", "o4")):
+    if any(model_name.startswith(p) for p in ("deepseek-v4",)):
+        _paper_max_tokens = 64000
+    elif any(model_name.startswith(p) for p in ("gpt-5", "o3", "o4")):
         _paper_max_tokens = 24000
 
     # T3.5: Retry once on failure, use placeholder if still fails
@@ -468,10 +473,22 @@ def _write_paper_sections(
         "in tables. Define abbreviation mappings in a footnote. "
         "NEVER put method names longer than 20 characters in table cells.\n\n"
         f"Outline:\n{outline}\n\n"
-        "Output markdown with ## headers. Continue from where Part 1 ended."
+        "Output markdown with ## headers. Continue from where Part 1 ended.\n\n"
+        + format_writing_tips(["experiments", "common_rejections"])
     )
     try:
         resp2 = _chat_with_prompt(llm, system, call2_user, max_tokens=_paper_max_tokens, retries=1)
+        # P17: Retry once with 1.5x tokens if response was truncated
+        if resp2.truncated:
+            _retry_max_2 = int(_paper_max_tokens * 1.5)
+            logger.warning(
+                "Stage 17 Part 2 truncated (finish_reason=length), retrying with %d max_tokens",
+                _retry_max_2,
+            )
+            try:
+                resp2 = _chat_with_prompt(llm, system, call2_user, max_tokens=_retry_max_2, retries=1)
+            except Exception:  # noqa: BLE001
+                pass  # Keep truncated resp2
         part2 = resp2.content.strip()
     except Exception:  # noqa: BLE001
         logger.error("Stage 17: Part 2 LLM call failed after retry — using placeholder")
@@ -513,11 +530,11 @@ def _write_paper_sections(
         "comparison with prior work (CITE 3-5 papers here!), practical implications.\n"
         "9. **Limitations** (200-300 words): honest assessment of scope, dataset, methodology. "
         "ALL caveats consolidated HERE — nowhere else in the paper.\n"
-        "10. **Conclusion** (100-200 words MAXIMUM — this is a HARD LIMIT): "
+        "10. **Conclusion** (200-300 words): "
         "Summarize contributions in 2-3 sentences. State main finding in 1 sentence. "
         "Suggest 2-3 concrete future directions in 1-2 sentences. "
         "Do NOT repeat any specific numbers from Results. Do NOT restate the abstract. "
-        "A good conclusion is SHORT and forward-looking.\n\n"
+        "A good conclusion is concise and forward-looking.\n\n"
         "CRITICAL FORMATTING RULES FOR ALL SECTIONS:\n"
         "- Write as FLOWING PROSE paragraphs, NOT bullet-point lists\n"
         "- NEVER dump raw metric paths like 'config/method_name/seed_3/primary_metric'\n"
@@ -528,6 +545,17 @@ def _write_paper_sections(
     )
     try:
         resp3 = _chat_with_prompt(llm, system, call3_user, max_tokens=_paper_max_tokens, retries=1)
+        # P17: Retry once with 1.5x tokens if response was truncated
+        if resp3.truncated:
+            _retry_max_3 = int(_paper_max_tokens * 1.5)
+            logger.warning(
+                "Stage 17 Part 3 truncated (finish_reason=length), retrying with %d max_tokens",
+                _retry_max_3,
+            )
+            try:
+                resp3 = _chat_with_prompt(llm, system, call3_user, max_tokens=_retry_max_3, retries=1)
+            except Exception:  # noqa: BLE001
+                pass  # Keep truncated resp3
         part3 = resp3.content.strip()
     except Exception:  # noqa: BLE001
         logger.error("Stage 17: Part 3 LLM call failed after retry — using placeholder")
@@ -767,10 +795,10 @@ def _validate_draft_quality(
         if hl in ("conclusion", "conclusions", "conclusion and future work"):
             if wc > 300:
                 overall_warnings.append(
-                    f"Conclusion is too long: {wc} words (target: 100-200 words)"
+                    f"Conclusion is too long: {wc} words (target: 200-300 words)"
                 )
                 revision_directives.append(
-                    f"COMPRESS the Conclusion from {wc} to 100-200 words. "
+                    f"COMPRESS the Conclusion from {wc} to 200-300 words. "
                     f"Do NOT repeat specific metric values from Results. "
                     f"Summarize findings in 2-3 sentences, then 2-3 future directions."
                 )
@@ -926,6 +954,17 @@ def _validate_draft_quality(
         "overall_warnings": overall_warnings,
         "revision_directives": revision_directives,
     }
+
+    # P3: Advisory template/placeholder detection via check_strict_quality
+    try:
+        from researchclaw.quality import check_strict_quality as _check_strict_quality
+        _sq_passed, _sq_msg = _check_strict_quality(draft)
+        if not _sq_passed:
+            overall_warnings.append(f"[TemplateCheck] {_sq_msg}")
+            result["overall_warnings"] = overall_warnings
+    except Exception:  # noqa: BLE001
+        pass
+
     if stage_dir is not None:
         (stage_dir / "draft_quality.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"

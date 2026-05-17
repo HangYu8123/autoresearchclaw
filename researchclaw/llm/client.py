@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -44,12 +45,100 @@ _NO_TEMPERATURE_MODELS = frozenset(
     }
 )
 
+_PREFLIGHT_TOKEN_HEADROOM_MODELS = frozenset(
+    {
+        "deepseek-v4",
+        "deepseek-r1",
+        "deepseek-reasoner",
+    }
+)
+
+_PREFLIGHT_PROMPT = "Reply with exactly: pong"
+
 _DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 _MAX_BACKOFF_SEC = 300  # 5-minute ceiling for retry delays
+_READ_IDLE_TIMEOUT_SEC = 60.0
+_CERTIFI_SSL_CONFIGURED = False
+
+
+def _default_ssl_cafile_exists() -> bool:
+    cafile = ssl.get_default_verify_paths().cafile
+    return bool(cafile and os.path.exists(cafile))
+
+
+def _certifi_cafile() -> str | None:
+    try:
+        import certifi
+    except ImportError:
+        return None
+
+    cafile = certifi.where()
+    if cafile and os.path.exists(cafile):
+        return cafile
+    return None
+
+
+def _ensure_ssl_cert_file() -> None:
+    """Use certifi when Python has no configured CA bundle."""
+
+    global _CERTIFI_SSL_CONFIGURED
+    if _CERTIFI_SSL_CONFIGURED:
+        return
+    _CERTIFI_SSL_CONFIGURED = True
+
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        return
+    if _default_ssl_cafile_exists():
+        return
+    cafile = _certifi_cafile()
+    if cafile:
+        os.environ["SSL_CERT_FILE"] = cafile
+
+
+def _read_with_deadline(
+    resp: Any,
+    timeout_sec: int,
+    idle_timeout_sec: float = _READ_IDLE_TIMEOUT_SEC,
+) -> bytes:
+    """Read an HTTP response while enforcing total wall-clock time.
+
+    Parameters
+    ----------
+    idle_timeout_sec:
+        Per-chunk socket idle timeout.  Defaults to ``_READ_IDLE_TIMEOUT_SEC``
+        (60 s).  Pass 90 s for reasoning models that may pause during CoT.
+    """
+
+    deadline = time.monotonic() + max(1, int(timeout_sec or 1))
+    chunks: list[bytes] = []
+    reader = getattr(resp, "read1", None) or resp.read
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"LLM response body read exceeded {timeout_sec} seconds"
+            )
+        _set_response_timeout(resp, min(remaining, idle_timeout_sec))
+        chunk = reader(65536)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def _set_response_timeout(resp: Any, timeout_sec: float) -> None:
+    try:
+        sock = resp.fp.raw._sock
+    except AttributeError:
+        return
+    try:
+        sock.settimeout(max(0.1, timeout_sec))
+    except OSError:
+        return
 
 
 @dataclass
@@ -94,6 +183,7 @@ class LLMClient:
     """Stateless OpenAI-compatible chat completion client."""
 
     def __init__(self, config: LLMConfig) -> None:
+        _ensure_ssl_cert_file()
         self.config = config
         self._model_chain = [config.primary_model] + list(config.fallback_models)
         self._anthropic = None  # Will be set by from_rc_config if needed
@@ -259,13 +349,14 @@ class LLMClient:
         Distinguishes: 401 (bad key), 403 (model forbidden),
                        404 (bad endpoint), 429 (rate limited), timeout.
         """
-        is_reasoning = any(
-            self.config.primary_model.startswith(p) for p in _NEW_PARAM_MODELS
+        needs_headroom = any(
+            self.config.primary_model.startswith(p)
+            for p in (*_NEW_PARAM_MODELS, *_PREFLIGHT_TOKEN_HEADROOM_MODELS)
         )
-        min_tokens = 64 if is_reasoning else 1
+        min_tokens = 512 if needs_headroom else 16
         try:
             _ = self.chat(
-                [{"role": "user", "content": "ping"}],
+                [{"role": "user", "content": _PREFLIGHT_PROMPT}],
                 max_tokens=min_tokens,
                 temperature=0,
             )
@@ -447,11 +538,16 @@ class LLMClient:
                     body["max_tokens"] = max_tokens
 
             if json_mode:
+                # P16: Force temperature=0 for DeepSeek non-thinking mode JSON calls
+                # to prevent malformed JSON from temperature variability.
+                _model_lower = model.lower()
+                if _model_lower.startswith("deepseek") and "temperature" in body:
+                    body["temperature"] = 0.0
+
                 # Many OpenAI-compatible providers don't support the
                 # response_format parameter and return HTTP 400.
                 # Fall back to system-prompt injection for known-incompatible
                 # models (Claude, DeepSeek, Qwen, etc.) and the responses API.
-                _model_lower = model.lower()
                 _no_response_format = (
                     _model_lower.startswith("claude")
                     or _model_lower.startswith("deepseek")
@@ -495,11 +591,21 @@ class LLMClient:
 
             req = urllib.request.Request(url, data=payload, headers=headers)
 
+            # P6: Model-adaptive idle timeout — reasoning models get 90 s
+            # to accommodate CoT thinking pauses; all others keep 60 s default.
+            _idle_timeout = (
+                90.0
+                if any(model.startswith(p) for p in _PREFLIGHT_TOKEN_HEADROOM_MODELS)
+                else _READ_IDLE_TIMEOUT_SEC
+            )
+
             try:
                 with urllib.request.urlopen(
                     req, timeout=self.config.timeout_sec
                 ) as resp:
-                    data = json.loads(resp.read())
+                    data = json.loads(
+                        _read_with_deadline(resp, self.config.timeout_sec, _idle_timeout)
+                    )
             except (urllib.error.URLError, OSError) as exc:
                 # MetaClaw bridge: fallback to direct LLM if proxy unreachable
                 if self.config.fallback_url:
@@ -521,7 +627,9 @@ class LLMClient:
                     with urllib.request.urlopen(
                         fallback_req, timeout=self.config.timeout_sec
                     ) as resp:
-                        data = json.loads(resp.read())
+                        data = json.loads(
+                            _read_with_deadline(resp, self.config.timeout_sec, _idle_timeout)
+                        )
                 else:
                     raise
 

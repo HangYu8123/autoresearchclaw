@@ -6,6 +6,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from researchclaw.llm.client import _read_with_deadline
+
 logger = logging.getLogger(__name__)
 
 _JSON_MODE_INSTRUCTION = (
@@ -104,7 +106,7 @@ class GeminiAdapter:
 
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_sec) as resp:
-                data = json.loads(resp.read())
+                data = json.loads(_read_with_deadline(resp, self.timeout_sec))
         except urllib.error.HTTPError as exc:
             # Attempt to extract detailed error from Gemini to aid debugging
             try:

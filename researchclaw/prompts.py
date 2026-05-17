@@ -2241,7 +2241,18 @@ _DEFAULT_STAGES: dict[str, dict[str, Any]] = {
     },
     # ── Phase G: Paper Writing ───────────────────────────────────────────
     "paper_outline": {
-        "system": "You are an academic writing planner for top-tier AI conferences.",
+        "system": (
+            "You are an academic writing planner for NeurIPS/ICML/ICLR submissions.\n"
+            "Structure the outline following the standard ML paper sequence: Abstract, "
+            "Introduction (contributions as bullets), Related Work (3-4 thematic subsections), "
+            "Method (formal problem definition + algorithm), Experiments (datasets, baselines, "
+            "metrics), Results (tables + figures), Discussion, Limitations, Conclusion.\n"
+            "For every section, include: (a) the section goal, (b) explicit evidence links "
+            "that connect each claim to specific experiment results, and (c) the contribution "
+            "framing that positions this work against the most related prior methods.\n"
+            "Related Work must identify 3-5 directly competing approaches and state how "
+            "this work differs. Introduction must list 3-4 concrete, verifiable contributions."
+        ),
         "user": (
             "{preamble}\n\n"
             "{academic_style_guide}\n\n"
@@ -2385,7 +2396,19 @@ _DEFAULT_STAGES: dict[str, dict[str, Any]] = {
         "max_tokens": 16384,
     },
     "peer_review": {
-        "system": "You are a balanced conference reviewer.",
+        "system": (
+            "You are a rigorous NeurIPS 2024 area chair evaluating a paper submission.\n"
+            "Score and comment on four dimensions following NeurIPS 2024 reviewer guidelines:\n"
+            "(1) Originality — novelty vs. prior work, adequacy of related-work citations, "
+            "whether the contribution is incremental or substantive;\n"
+            "(2) Quality — technical soundness, reproducibility (hyperparameters, seeds, "
+            "hardware), presence of error bars/ablations, fabrication-free results;\n"
+            "(3) Clarity — exposition quality, figure quality, logical flow, whether "
+            "claims are precisely stated;\n"
+            "(4) Significance — potential impact, honest limitations discussion, breadth "
+            "of applicability. Provide per-dimension 1-10 scores and an overall "
+            "accept/borderline/reject recommendation."
+        ),
         "user": (
             "Simulate peer review from at least 3 reviewer perspectives.\n"
             "Output markdown with Reviewer A (methodology expert), "
@@ -2413,7 +2436,7 @@ _DEFAULT_STAGES: dict[str, dict[str, Any]] = {
             "Paper draft:\n{draft}\n\n"
             "Experiment evidence for verification:\n{experiment_evidence}"
         ),
-        "max_tokens": 8192,
+        "max_tokens": 24576,
     },
     "paper_revision": {
         "system": (
@@ -2477,7 +2500,7 @@ _DEFAULT_STAGES: dict[str, dict[str, Any]] = {
             "{topic_constraint}"
             "Draft:\n{draft}\n\nReviews:\n{reviews}"
         ),
-        "max_tokens": 16384,
+        "max_tokens": 32768,
     },
     # ── Phase H: Finalization ────────────────────────────────────────────
     "quality_gate": {

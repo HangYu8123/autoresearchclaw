@@ -4,6 +4,7 @@ import urllib.error
 from email.message import Message
 from unittest.mock import patch
 
+import researchclaw.llm.client as llm_client_module
 from researchclaw.llm.client import LLMClient, LLMConfig, LLMResponse
 
 
@@ -35,6 +36,21 @@ class TestPreflight:
         assert ok is True
         assert "OK" in msg
         assert "gpt-test" in msg
+
+    def test_preflight_uses_token_headroom_for_deepseek_v4(self):
+        client = _make_client(primary_model="deepseek-v4-pro")
+        seen: dict[str, int] = {}
+
+        def fake_chat(*args, **kwargs):
+            seen["max_tokens"] = kwargs["max_tokens"]
+            return LLMResponse(content="pong", model="deepseek-v4-pro")
+
+        with patch.object(client, "chat", side_effect=fake_chat):
+            ok, msg = client.preflight()
+
+        assert ok is True
+        assert "OK" in msg
+        assert seen["max_tokens"] == 512
 
     def test_preflight_401_invalid_key(self):
         client = _make_client()
@@ -91,3 +107,35 @@ class TestPreflight:
             ok, msg = client.preflight()
         assert ok is False
         assert "HTTP 500" in msg
+
+    def test_client_uses_certifi_when_default_ca_bundle_missing(
+        self, monkeypatch, tmp_path
+    ):
+        cafile = tmp_path / "cacert.pem"
+        cafile.write_text("test cert bundle", encoding="utf-8")
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+        monkeypatch.setattr(llm_client_module, "_CERTIFI_SSL_CONFIGURED", False)
+        monkeypatch.setattr(llm_client_module, "_default_ssl_cafile_exists", lambda: False)
+        monkeypatch.setattr(llm_client_module, "_certifi_cafile", lambda: str(cafile))
+
+        _make_client()
+
+        assert llm_client_module.os.environ["SSL_CERT_FILE"] == str(cafile)
+
+    def test_client_respects_explicit_ssl_cert_file(self, monkeypatch, tmp_path):
+        explicit = tmp_path / "custom.pem"
+        explicit.write_text("custom cert bundle", encoding="utf-8")
+        monkeypatch.setenv("SSL_CERT_FILE", str(explicit))
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+        monkeypatch.setattr(llm_client_module, "_CERTIFI_SSL_CONFIGURED", False)
+        monkeypatch.setattr(llm_client_module, "_default_ssl_cafile_exists", lambda: False)
+        monkeypatch.setattr(
+            llm_client_module,
+            "_certifi_cafile",
+            lambda: str(tmp_path / "certifi.pem"),
+        )
+
+        _make_client()
+
+        assert llm_client_module.os.environ["SSL_CERT_FILE"] == str(explicit)

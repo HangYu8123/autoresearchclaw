@@ -243,7 +243,17 @@ stages:
       {outline}'
   paper_outline:
     max_tokens: 8192
-    system: You are an academic writing planner.
+    system: >-
+      You are an academic writing planner for NeurIPS/ICML/ICLR submissions.
+      Structure the outline following the standard ML paper sequence: Abstract,
+      Introduction (contributions as bullets), Related Work (3-4 thematic subsections),
+      Method (formal problem definition + algorithm), Experiments (datasets, baselines,
+      metrics), Results (tables + figures), Discussion, Limitations, Conclusion.
+      For every section, include: (a) the section goal, (b) explicit evidence links
+      that connect each claim to specific experiment results, and (c) the contribution
+      framing that positions this work against the most related prior methods.
+      Related Work must identify 3-5 directly competing approaches and state how
+      this work differs. Introduction must list 3-4 concrete, verifiable contributions.
     user: '{preamble}
 
 
@@ -261,14 +271,27 @@ stages:
       {decision}'
   paper_revision:
     max_tokens: 32768
-    system: You are a paper revision expert for NeurIPS/ICML/ICLR submissions. When revising, NEVER shorten existing sections — only expand, improve, and add content. The final paper must be at least as long as the draft.
+    system: >-
+      You are a paper revision expert for NeurIPS/ICML/ICLR submissions.
+      Apply per-section revision strategies:
+      Abstract — ensure every sentence carries a quantitative claim or a
+      precise contribution statement; remove vague phrases.
+      Methods — add reproducibility detail: hyperparameter tables, algorithm
+      pseudocode, complexity analysis, and design rationale.
+      Results — verify every table has error bars (±std) and every claim cites
+      a specific table row or figure; add paired statistical tests where missing.
+      Conclusion — scope claims strictly to experimental evidence; do not
+      overclaim generalization; suggest 2-3 concrete future directions.
     user: 'Revise the paper draft to address all review comments.
 
-      CRITICAL: Maintain or INCREASE the paper length. Each section must meet its minimum word count:
-      Abstract (150-250), Introduction (800-1000), Related Work (600-800), Method (1000-1500),
-      Experiments (800-1200), Results (600-800), Discussion (400-600), Limitations (200-300), Conclusion (200-300).
-
       Return revised markdown only.
+
+      The final paper body MUST be <= 6,500 words (standard 9-page conference
+      limit). If the current draft exceeds this, compress by removing redundant
+      restatements. Each section should meet quality depth targets:
+      Abstract (150-250 words), Introduction (700-1000), Related Work (500-800),
+      Method (800-1500), Experiments (600-1200), Results (500-800),
+      Discussion (300-600), Limitations (200-400), Conclusion (150-300).
 
       {topic_constraint}Draft:
 
@@ -279,9 +302,19 @@ stages:
 
       {reviews}'
   peer_review:
-    max_tokens: 8192
-    system: You are a balanced conference reviewer who is rigorous about
-      methodology-evidence consistency.
+    max_tokens: 24576
+    system: >-
+      You are a rigorous NeurIPS 2024 area chair evaluating a paper submission.
+      Score and comment on four dimensions following NeurIPS 2024 reviewer guidelines:
+      (1) Originality — novelty vs. prior work, adequacy of related-work citations,
+      whether the contribution is incremental or substantive;
+      (2) Quality — technical soundness, reproducibility (hyperparameters, seeds,
+      hardware), presence of error bars/ablations, fabrication-free results;
+      (3) Clarity — exposition quality, figure quality, logical flow, whether
+      claims are precisely stated;
+      (4) Significance — potential impact, honest limitations discussion, breadth
+      of applicability. Provide per-dimension 1-10 scores and an overall
+      accept/borderline/reject recommendation.
     user: 'Simulate peer review from at least 2 reviewer perspectives.
 
       Output markdown with Reviewer A and Reviewer B, each including strengths,

@@ -95,3 +95,7 @@ scripts/md2pdf.py
 docs/tasks/
 docs/feature_expansion_analysis.*
 docs/tester_guide_cn.*
+
+
+#harness code
+.github/harness_coding_instructions/.git

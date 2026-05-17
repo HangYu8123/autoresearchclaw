@@ -37,6 +37,14 @@ class FakeLLMClientWithConfig(FakeLLMClient):
         )
 
 
+class FailingLLMScreenClient:
+    def chat(self, messages: list[dict[str, str]], **kwargs: object):
+        _ = messages, kwargs
+        raise RuntimeError(
+            "All models failed. Last error: Model deepseek-v4-flash returned empty response"
+        )
+
+
 @pytest.fixture()
 def rc_config(tmp_path: Path) -> RCConfig:
     data = {
@@ -468,6 +476,87 @@ def test_execute_stage_gate_behavior_auto_approve_true_keeps_done(
     assert any(
         ns == "gates" and "auto-approved" in content for ns, content in memory_entries
     )
+
+
+def test_literature_screen_llm_failure_uses_keyword_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    run_dir: Path,
+    rc_config: RCConfig,
+    adapters: AdapterBundle,
+) -> None:
+    candidates = [
+        {
+            "paper_id": "p1",
+            "title": "Test Driven Science for ML Systems",
+            "abstract": "A systems paper about test-driven science and evaluation.",
+            "year": 2025,
+        },
+        {
+            "paper_id": "p2",
+            "title": "Machine Learning Systems for Reproducible Science",
+            "abstract": "A test-driven approach to machine learning systems.",
+            "year": 2024,
+        },
+    ]
+    _write_prior_artifact(
+        run_dir,
+        4,
+        "candidates.jsonl",
+        "\n".join(json.dumps(candidate) for candidate in candidates) + "\n",
+    )
+    monkeypatch.setattr(
+        "researchclaw.pipeline.executor.LLMClient.from_rc_config",
+        lambda _config: FailingLLMScreenClient(),
+    )
+
+    result = rc_executor.execute_stage(
+        Stage.LITERATURE_SCREEN,
+        run_dir=run_dir,
+        run_id="run-screen-fallback",
+        config=rc_config,
+        adapters=adapters,
+        auto_approve_gates=True,
+    )
+
+    assert result.status == StageStatus.DONE
+    out = run_dir / "stage-05" / "shortlist.jsonl"
+    assert out.exists()
+    rows = [
+        json.loads(line)
+        for line in out.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["paper_id"] for row in rows] == ["p1", "p2"]
+    assert all(row["keep_reason"] == "Template screened entry" for row in rows)
+    assert all("relevance_score" in row for row in rows)
+
+
+def test_resource_planning_llm_failure_uses_default_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+    run_dir: Path,
+    rc_config: RCConfig,
+    adapters: AdapterBundle,
+) -> None:
+    _write_prior_artifact(run_dir, 9, "exp_plan.yaml", "metric: accuracy\n")
+    monkeypatch.setattr(
+        "researchclaw.pipeline.executor.LLMClient.from_rc_config",
+        lambda _config: FailingLLMScreenClient(),
+    )
+
+    result = rc_executor.execute_stage(
+        Stage.RESOURCE_PLANNING,
+        run_dir=run_dir,
+        run_id="run-resource-fallback",
+        config=rc_config,
+        adapters=adapters,
+    )
+
+    assert result.status == StageStatus.DONE
+    out = run_dir / "stage-11" / "schedule.json"
+    assert out.exists()
+    schedule = json.loads(out.read_text(encoding="utf-8"))
+    assert [task["id"] for task in schedule["tasks"]] == ["baseline", "proposed"]
+    assert schedule["total_gpu_budget"] == 1
 
 
 def test_execute_stage_gate_behavior_auto_approve_false_blocks(

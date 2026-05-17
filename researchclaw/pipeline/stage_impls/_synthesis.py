@@ -168,6 +168,7 @@ def _execute_hypothesis_gen(
             topic=config.research.topic,
             hypotheses_text=hypotheses_md,
             papers_already_seen=papers_seen,
+            max_search_results=0,
             s2_api_key=getattr(config.llm, "s2_api_key", ""),
         )
         (stage_dir / "novelty_report.json").write_text(

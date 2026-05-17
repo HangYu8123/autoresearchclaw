@@ -225,41 +225,44 @@ def check_novelty(
     # Build search queries from hypotheses
     queries = _build_novelty_queries(topic, hypotheses_text)
 
-    # Try real API search
-    try:
-        from researchclaw.literature.search import search_papers_multi_query
+    # Try real API search when requested. Pipeline callers can pass
+    # max_search_results=0 to keep this non-critical check fully offline.
+    if max_search_results > 0:
+        try:
+            from researchclaw.literature.search import search_papers_multi_query
 
-        found = search_papers_multi_query(
-            queries,
-            limit_per_query=min(15, max_search_results),
-            s2_api_key=s2_api_key,
-        )
-        total_papers_retrieved = len(found)
-        for paper in found[:max_search_results]:
-            sim = _compute_similarity(hyp_keywords, paper.title, paper.abstract)
-            if sim >= similarity_threshold:
-                similar_papers.append(
-                    {
-                        "title": paper.title,
-                        "paper_id": paper.paper_id,
-                        "year": paper.year,
-                        "venue": paper.venue,
-                        "citation_count": paper.citation_count,
-                        "similarity": sim,
-                        "url": paper.url,
-                        "cite_key": paper.cite_key,
-                    }
-                )
-        logger.info(
-            "Novelty search: %d papers found, %d above threshold %.2f",
-            len(found),
-            len(similar_papers),
-            similarity_threshold,
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "Real novelty search failed, checking pipeline papers only", exc_info=True
-        )
+            found = search_papers_multi_query(
+                queries,
+                limit_per_query=min(15, max_search_results),
+                s2_api_key=s2_api_key,
+            )
+            total_papers_retrieved = len(found)
+            for paper in found[:max_search_results]:
+                sim = _compute_similarity(hyp_keywords, paper.title, paper.abstract)
+                if sim >= similarity_threshold:
+                    similar_papers.append(
+                        {
+                            "title": paper.title,
+                            "paper_id": paper.paper_id,
+                            "year": paper.year,
+                            "venue": paper.venue,
+                            "citation_count": paper.citation_count,
+                            "similarity": sim,
+                            "url": paper.url,
+                            "cite_key": paper.cite_key,
+                        }
+                    )
+            logger.info(
+                "Novelty search: %d papers found, %d above threshold %.2f",
+                len(found),
+                len(similar_papers),
+                similarity_threshold,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Real novelty search failed, checking pipeline papers only",
+                exc_info=True,
+            )
 
     # Also check papers already collected by the pipeline
     if papers_already_seen:
@@ -294,7 +297,10 @@ def check_novelty(
 
     # --- Determine search coverage quality ---
     # If API returned very few papers or none at all, the novelty score is unreliable.
-    if total_papers_retrieved == 0 and not papers_already_seen:
+    if max_search_results == 0:
+        # Caller explicitly requested offline mode — no API search was attempted.
+        search_coverage = "offline"
+    elif total_papers_retrieved == 0 and not papers_already_seen:
         search_coverage = "insufficient"
     elif total_papers_retrieved < 5:
         search_coverage = "partial"

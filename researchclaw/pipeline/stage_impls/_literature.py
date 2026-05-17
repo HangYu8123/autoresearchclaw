@@ -705,28 +705,38 @@ def _execute_literature_screen(
 
     shortlist: list[dict[str, Any]] = []
     if llm is not None:
-        _pm = prompts or PromptManager()
-        _overlay = _get_evolution_overlay(run_dir, "literature_screen")
-        sp = _pm.for_stage(
-            "literature_screen",
-            evolution_overlay=_overlay,
-            topic=config.research.topic,
-            domains=", ".join(config.research.domains)
-            if config.research.domains
-            else "general",
-            quality_threshold=config.research.quality_threshold,
-            candidates_text=candidates_text,
-        )
-        resp = _chat_with_prompt(
-            llm,
-            sp.system,
-            sp.user,
-            json_mode=sp.json_mode,
-            max_tokens=sp.max_tokens,
-        )
-        payload = _safe_json_loads(resp.content, {})
-        if isinstance(payload, dict) and isinstance(payload.get("shortlist"), list):
-            shortlist = [row for row in payload["shortlist"] if isinstance(row, dict)]
+        try:
+            _pm = prompts or PromptManager()
+            _overlay = _get_evolution_overlay(run_dir, "literature_screen")
+            sp = _pm.for_stage(
+                "literature_screen",
+                evolution_overlay=_overlay,
+                topic=config.research.topic,
+                domains=", ".join(config.research.domains)
+                if config.research.domains
+                else "general",
+                quality_threshold=config.research.quality_threshold,
+                candidates_text=candidates_text,
+            )
+            resp = _chat_with_prompt(
+                llm,
+                sp.system,
+                sp.user,
+                json_mode=sp.json_mode,
+                max_tokens=sp.max_tokens,
+            )
+            payload = _safe_json_loads(resp.content, {})
+            if isinstance(payload, dict) and isinstance(
+                payload.get("shortlist"), list
+            ):
+                shortlist = [
+                    row for row in payload["shortlist"] if isinstance(row, dict)
+                ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Stage 5 LLM screening failed; using keyword fallback shortlist: %s",
+                exc,
+            )
     # T2.2: Ensure minimum shortlist size of 15 for adequate related work
     _MIN_SHORTLIST = 15
     if not shortlist:

@@ -22,7 +22,7 @@ Use the trigger phrases as soft signals, not strict rules. Classify based on the
 | **Correctness Check** | test, verify, check, validate, review, audit, examine, ensure correctness, consistency check | #file:harness_coding_instructions/workflow/vscode_workflow/correctness_check.instructions.md |
 | **Initialize Repo** | initialize, init, setup repo, create overview, bootstrap, first-time setup | #file:harness_coding_instructions/workflow/vscode_workflow/initialize.instructions.md |
 
-All instruction files are under `AutoResearchClaw/.github/harness_coding_instructions/`.
+All instruction files are under `.github/harness_coding_instructions/`.
 
 ## Routing Procedure
 
@@ -37,4 +37,4 @@ All instruction files are under `AutoResearchClaw/.github/harness_coding_instruc
 Handle sequentially — complete one workflow type before starting the next.
 
 ## Repo context files
-Look for context files (`codebase_overview.md`, `scripts_overview.md`, `update_logs.md`, etc.) under `AutoResearchClaw/.github/harness_coding_instructions/repo_info/`.
+Look for context files (`codebase_overview.md`, `scripts_overview.md`, `update_logs.md`, etc.) under `.github/harness_coding_instructions/repo_info/`.

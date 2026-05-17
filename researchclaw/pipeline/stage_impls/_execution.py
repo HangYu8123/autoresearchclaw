@@ -56,15 +56,23 @@ def _execute_resource_planning(
         _pm = prompts or PromptManager()
         _overlay = _get_evolution_overlay(run_dir, "resource_planning")
         sp = _pm.for_stage("resource_planning", evolution_overlay=_overlay, exp_plan=exp_plan)
-        resp = _chat_with_prompt(
-            llm,
-            sp.system,
-            sp.user,
-            json_mode=sp.json_mode,
-            max_tokens=sp.max_tokens,
-        )
-        parsed = _safe_json_loads(resp.content, {})
-        if isinstance(parsed, dict):
+        try:
+            resp = _chat_with_prompt(
+                llm,
+                sp.system,
+                sp.user,
+                json_mode=sp.json_mode,
+                max_tokens=sp.max_tokens,
+            )
+            parsed = _safe_json_loads(resp.content, {})
+        except Exception as exc:
+            logger.warning(
+                "Resource planning LLM failed; using fallback schedule: %s",
+                exc,
+                exc_info=True,
+            )
+            parsed = {}
+        if isinstance(parsed, dict) and parsed:
             schedule = parsed
     if schedule is None:
         schedule = {

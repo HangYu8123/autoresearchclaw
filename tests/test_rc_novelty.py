@@ -292,6 +292,19 @@ class TestCheckNovelty:
         assert "novelty_score" in result
 
     @patch("researchclaw.literature.search.search_papers_multi_query")
+    def test_zero_max_search_results_skips_real_search(
+        self, mock_search: MagicMock
+    ) -> None:
+        """Pipeline callers can force novelty checks to use existing papers only."""
+        result = check_novelty(
+            topic="Some topic",
+            hypotheses_text="## H1: Some hypothesis with enough text\n",
+            max_search_results=0,
+        )
+        mock_search.assert_not_called()
+        assert result["total_papers_retrieved"] == 0
+
+    @patch("researchclaw.literature.search.search_papers_multi_query")
     def test_output_keys_complete(self, mock_search: MagicMock) -> None:
         """All expected keys present in output."""
         mock_search.return_value = []

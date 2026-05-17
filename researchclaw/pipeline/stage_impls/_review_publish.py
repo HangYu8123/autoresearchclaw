@@ -174,14 +174,32 @@ def _execute_peer_review(
             experiment_evidence=experiment_evidence,
         )
         _review_user = sp.user + _quality_suffix
-        resp = _chat_with_prompt(
-            llm,
-            sp.system,
-            _review_user,
-            json_mode=sp.json_mode,
-            max_tokens=sp.max_tokens,
-        )
-        reviews = resp.content
+        # P5: Wrap LLM call in try/except — mirrors BUG-001 pattern for Stage 05
+        try:
+            resp = _chat_with_prompt(
+                llm,
+                sp.system,
+                _review_user,
+                json_mode=sp.json_mode,
+                max_tokens=sp.max_tokens,
+            )
+            reviews = resp.content
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Stage 18: peer review LLM call failed — using static fallback review"
+            )
+            reviews = """# Reviews
+
+## Reviewer A
+- Strengths: Clear problem statement.
+- Weaknesses: Limited ablation details.
+- Actionable revisions: Add uncertainty analysis and stronger baselines.
+
+## Reviewer B
+- Strengths: Reproducibility focus.
+- Weaknesses: Discussion underdeveloped.
+- Actionable revisions: Expand limitations and broader impact.
+"""
     else:
         reviews = """# Reviews
 
@@ -285,6 +303,20 @@ def _execute_paper_revision(
                 logger.info(
                     "Stage 19: Increased max_tokens from %d to %d to fit full paper revision",
                     sp.max_tokens,
+                    revision_max_tokens,
+                )
+        # P18: Add 1.5x multiplier for reasoning models (CoT tokens count against max_tokens)
+        _REASONING_PREFIXES = ("deepseek-v4", "deepseek-r", "o3", "o4")
+        if revision_max_tokens and llm is not None:
+            _active_model = llm.config.primary_model or ""
+            if any(_active_model.startswith(p) for p in _REASONING_PREFIXES):
+                _old_rtok = revision_max_tokens
+                revision_max_tokens = int(revision_max_tokens * 1.5)
+                logger.info(
+                    "Stage 19: Reasoning model %s — applied 1.5x token multiplier "
+                    "(%d → %d) for CoT overhead",
+                    _active_model,
+                    _old_rtok,
                     revision_max_tokens,
                 )
 
