@@ -126,6 +126,7 @@ llm:
   fallback_models:                           # Tried in order if primary fails
     - "gpt-4.1"
     - "gpt-4o-mini"
+  max_tokens: 4096                           # Default output-token cap; increase for long-output models
   s2_api_key: ""                             # Optional: Semantic Scholar API key for higher rate limits
 ```
 
@@ -466,6 +467,9 @@ experiment:
     network_policy: "setup_only"   # none | setup_only | pip_only | full
     auto_install_deps: true
     shm_size_mb: 2048
+    env:
+      MPLCONFIGDIR: "/tmp/matplotlib"
+    env_from_host: ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"]
 ```
 
 The pipeline runs generated code inside a **Docker container** with GPU passthrough, dependency auto-installation, and network isolation. Execution follows a **three-phase model** within a single container:
@@ -479,6 +483,8 @@ The pipeline runs generated code inside a **Docker container** with GPU passthro
 - `setup_only` (default) — Network during Phase 0+1, disabled before Phase 2 via iptables (`--cap-add=NET_ADMIN`).
 - `pip_only` — Network only during Phase 0 (pip install), disabled for Phase 1+2.
 - `full` — Network available throughout all phases.
+
+**Environment**: Use `docker.env` for static variables inside the container and `docker.env_from_host` to copy selected host variables, such as Hugging Face tokens, when present. Per-run overrides still take precedence.
 
 **Pre-cached datasets**: The Docker image includes CIFAR-10/100, MNIST, FashionMNIST, STL-10, and SVHN at `/opt/datasets`, mounted read-only as `/workspace/data`. No download needed for these standard benchmarks.
 

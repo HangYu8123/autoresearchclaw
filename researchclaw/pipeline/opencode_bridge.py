@@ -266,6 +266,7 @@ class OpenCodeBridge:
         model: str = "",
         llm_base_url: str = "",
         api_key_env: str = "",
+        api_key: str = "",
         llm_provider: str = "openai-compatible",
         timeout_sec: int = 600,
         max_retries: int = 1,
@@ -274,6 +275,7 @@ class OpenCodeBridge:
         self._model = (model or "").strip()
         self._llm_base_url = llm_base_url
         self._api_key_env = api_key_env
+        self._api_key = api_key
         self._llm_provider = llm_provider
         self._timeout_sec = timeout_sec
         self._max_retries = max_retries
@@ -382,45 +384,98 @@ class OpenCodeBridge:
             or "azure" in (self._llm_provider or "").lower()
         )
 
+    def _provider_id(self) -> str:
+        """Return the OpenCode provider id to register in opencode.json."""
+        raw = (self._llm_provider or "openai-compatible").strip().lower()
+        provider = re.sub(r"[^a-z0-9._-]+", "-", raw).strip("-")
+        return provider or "openai-compatible"
+
+    def _model_provider_and_id(self) -> tuple[str, str]:
+        """Return (provider_id, provider-local model id) for OpenCode."""
+        if not self._model:
+            raise ValueError(
+                "OpenCode model is empty; pass config.llm.primary_model or "
+                "configure experiment.opencode.model"
+            )
+
+        provider_id = self._provider_id()
+        model = self._model
+        if "/" in model:
+            first, rest = model.split("/", 1)
+            if first == provider_id:
+                return first, rest
+            if provider_id == "openrouter":
+                return provider_id, model
+            # Respect an explicit provider/model override instead of stripping it.
+            return first, rest
+        return provider_id, model
+
+    def _opencode_api_key_env_name(self) -> str:
+        """Environment variable name referenced by opencode.json."""
+        if self._api_key_env:
+            return self._api_key_env
+        if self._api_key:
+            return "RESEARCHCLAW_OPENCODE_API_KEY"
+        return ""
+
+    def _resolved_api_key(self) -> str:
+        """Resolve inline/env API key without exposing it in artifacts."""
+        if self._api_key:
+            return self._api_key
+        if self._api_key_env:
+            return os.environ.get(self._api_key_env, "")
+        return ""
+
+    def _redact_sensitive(self, text: str) -> str:
+        """Redact API keys that may appear in subprocess output."""
+        redacted = text or ""
+        for secret in {
+            self._api_key,
+            os.environ.get(self._api_key_env, "") if self._api_key_env else "",
+        }:
+            if secret and len(secret) >= 4:
+                redacted = redacted.replace(secret, "[REDACTED]")
+        return redacted
+
     def _build_opencode_config(self) -> dict[str, Any]:
         """Build the opencode.json configuration.
 
-        Always uses the "openai" provider — this works for both standard
-        OpenAI endpoints and Azure OpenAI (which accepts Bearer token auth
-        on the ``/openai/v1`` path and now supports the Responses API).
+        Uses a project-local custom provider so OpenCode can address the model
+        as ``provider/model`` and route OpenAI-compatible traffic to the
+        configured base URL.
         """
         cfg: dict[str, Any] = {
             "$schema": "https://opencode.ai/config.json",
         }
 
+        provider_id, model_id = self._model_provider_and_id() if self._model else ("", "")
+        resolved_model = self._resolve_opencode_model() if self._model else ""
         if self._llm_base_url:
-            if self._model:
-                cfg["model"] = self._resolve_opencode_model()
+            if resolved_model:
+                cfg["model"] = resolved_model
+            api_key_env = self._opencode_api_key_env_name()
+            options: dict[str, Any] = {"baseURL": self._llm_base_url}
+            if api_key_env:
+                options["apiKey"] = f"{{env:{api_key_env}}}"
             cfg["provider"] = {
-                "openai": {
+                provider_id: {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "name": provider_id,
                     "options": {
-                        "baseURL": self._llm_base_url,
-                        "apiKey": f"{{env:{self._api_key_env}}}"
-                        if self._api_key_env
-                        else "",
+                        **options,
                     },
                     "models": {},
                 }
             }
             # Register the model so OpenCode knows it exists
-            if self._model:
-                model_name = self._resolve_opencode_model()
-                cfg["provider"]["openai"]["models"] = {
-                    model_name: {
-                        "name": model_name,
-                        "modalities": {
-                            "input": ["text"],
-                            "output": ["text"],
-                        },
+            if model_id:
+                cfg["provider"][provider_id]["models"] = {
+                    model_id: {
+                        "name": model_id,
                     }
                 }
         elif self._model:
-            cfg["model"] = self._resolve_opencode_model()
+            cfg["model"] = resolved_model
 
         return cfg
 
@@ -429,23 +484,12 @@ class OpenCodeBridge:
     def _resolve_opencode_model(self) -> str:
         """Resolve the model identifier for OpenCode CLI's ``-m`` flag.
 
-        OpenCode uses bare model names for the configured provider.  If a
-        provider-prefixed value is supplied for backward compatibility
-        (e.g. ``openai/gpt-5.4-mini``), strip the provider prefix before
-        passing it to the CLI.
-
-        Note: Azure AI Services now supports the Responses API with Bearer
-        token auth via the OpenAI-compatible endpoint, so we use the "openai"
-        provider universally — no Anthropic fallback needed.
+        OpenCode expects model names in ``provider/model`` form.  Bare models
+        are qualified with the configured provider id; explicitly qualified
+        models are preserved.
         """
-        if not self._model:
-            raise ValueError(
-                "OpenCode model is empty; pass config.llm.primary_model or "
-                "configure experiment.opencode.model"
-            )
-        if "/" in self._model:
-            return self._model.rsplit("/", 1)[-1]
-        return self._model
+        provider_id, model_id = self._model_provider_and_id()
+        return f"{provider_id}/{model_id}"
 
     # -- invocation ------------------------------------------------------------
 
@@ -456,14 +500,11 @@ class OpenCodeBridge:
     ) -> tuple[bool, str, float]:
         """Run ``opencode run`` in the workspace. Returns (success, log, elapsed)."""
         env = os.environ.copy()
-        # Pass API key via environment if configured
-        if self._api_key_env:
-            api_key = os.environ.get(self._api_key_env, "")
-            if api_key:
-                # We always use the "openai" provider for OpenCode now,
-                # which reads OPENAI_API_KEY (works for Azure too via
-                # Bearer token auth on the OpenAI-compatible endpoint).
-                env["OPENAI_API_KEY"] = api_key
+        api_key_env = self._opencode_api_key_env_name()
+        api_key = self._resolved_api_key()
+        if api_key_env and api_key:
+            env[api_key_env] = api_key
+        env["OPENCODE_CONFIG"] = str(workspace / "opencode.json")
 
         # Use -m flag to specify model (more reliable than opencode.json)
         resolved_model = self._resolve_opencode_model()
@@ -483,19 +524,19 @@ class OpenCodeBridge:
                 env=env,
             )
             elapsed = time.monotonic() - t0
-            log = result.stdout + "\n" + result.stderr
+            log = self._redact_sensitive(result.stdout + "\n" + result.stderr)
             return result.returncode == 0, log, elapsed
         except subprocess.TimeoutExpired as exc:
             elapsed = time.monotonic() - t0
             log = f"TIMEOUT after {elapsed:.1f}s"
             if exc.stdout:
                 log += f"\nstdout: {exc.stdout[:2000] if isinstance(exc.stdout, str) else exc.stdout.decode(errors='replace')[:2000]}"
-            return False, log, elapsed
+            return False, self._redact_sensitive(log), elapsed
         except FileNotFoundError:
             return False, "opencode CLI not found", 0.0
         except Exception as exc:  # noqa: BLE001
             elapsed = time.monotonic() - t0
-            return False, f"Unexpected error: {exc}", elapsed
+            return False, self._redact_sensitive(f"Unexpected error: {exc}"), elapsed
 
     # -- file collection -------------------------------------------------------
 

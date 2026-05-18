@@ -138,6 +138,45 @@ def test_build_run_command_forwards_entry_args_and_env(tmp_path: Path):
     assert cmd[-3:] == ["main.py", "--foo", "bar"]
 
 
+def test_build_run_command_forwards_configured_env(tmp_path: Path):
+    cfg = DockerSandboxConfig(
+        network_policy="none",
+        env=(("RC_STATIC_ENV", "configured"), ("BAD-NAME", "ignored")),
+        env_from_host=("RC_HOST_ENV", "RC_MISSING_ENV"),
+    )
+    sandbox = DockerSandbox(cfg, tmp_path / "work")
+    with patch.dict("os.environ", {"RC_HOST_ENV": "from-host"}, clear=False):
+        cmd = sandbox._build_run_command(
+            tmp_path / "staging",
+            entry_point="main.py",
+            container_name="rc-test-env",
+        )
+
+    env_values = [cmd[i + 1] for i, token in enumerate(cmd) if token == "-e"]
+    assert "RC_STATIC_ENV=configured" in env_values
+    assert "RC_HOST_ENV=from-host" in env_values
+    assert "BAD-NAME=ignored" not in env_values
+    assert not any(v.startswith("RC_MISSING_ENV=") for v in env_values)
+
+
+def test_build_run_command_env_overrides_configured_env(tmp_path: Path):
+    cfg = DockerSandboxConfig(
+        network_policy="none",
+        env=(("RC_ENV", "configured"),),
+    )
+    sandbox = DockerSandbox(cfg, tmp_path / "work")
+    cmd = sandbox._build_run_command(
+        tmp_path / "staging",
+        entry_point="main.py",
+        container_name="rc-test-env-override",
+        env_overrides={"RC_ENV": "override"},
+    )
+
+    env_values = [cmd[i + 1] for i, token in enumerate(cmd) if token == "-e"]
+    assert env_values.count("RC_ENV=override") == 1
+    assert "RC_ENV=configured" not in env_values
+
+
 # ── Harness injection ─────────────────────────────────────────────────
 
 

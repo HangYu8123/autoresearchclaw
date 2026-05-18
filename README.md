@@ -156,6 +156,7 @@ llm:
   api_key_env: "DEEPSEEK_API_KEY"
   primary_model: "deepseek-v4-pro"
   fallback_models: ["deepseek-v4-flash"]
+  max_tokens: 65536
 
 experiment:
   mode: "sandbox"
@@ -603,6 +604,7 @@ llm:
   api_key: ""                      # Or hardcode key here
   primary_model: "deepseek-v4-pro"  # Primary model
   fallback_models: ["deepseek-v4-flash"] # Fallback chain
+  max_tokens: 65536                 # Default output-token cap when a stage does not override it
   s2_api_key: ""                   # Semantic Scholar API key (optional, higher rate limits)
   acp:                             # Only used when provider: "acp"
     agent: "claude"                # ACP agent CLI command (claude, codex, gemini, etc.)
@@ -632,6 +634,9 @@ experiment:
     gpu_enabled: true
     memory_limit_mb: 8192
     auto_install_deps: true        # Auto-detect imports → requirements.txt
+    env:
+      MPLCONFIGDIR: "/tmp/matplotlib"
+    env_from_host: ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"]
   ssh_remote:
     host: ""                       # GPU server hostname
     gpu_ids: []                    # Available GPU IDs

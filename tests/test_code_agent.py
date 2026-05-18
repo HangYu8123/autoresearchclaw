@@ -96,6 +96,7 @@ class TestCodeAgentConfig:
         assert cfg.exec_fix_max_iterations == 3
         assert cfg.tree_search_enabled is False
         assert cfg.review_max_rounds == 2
+        assert cfg.wall_clock_budget_sec == 600
 
     def test_custom_values(self) -> None:
         cfg = CodeAgentConfig(
@@ -108,6 +109,44 @@ class TestCodeAgentConfig:
         assert cfg.exec_fix_max_iterations == 5
         assert cfg.tree_search_enabled is True
         assert cfg.tree_search_candidates == 5
+
+    def test_progress_callback_receives_events(
+        self, stage_dir: Path, pm: PromptManager,
+    ) -> None:
+        events: list[str] = []
+        agent = CodeAgent(
+            llm=FakeLLM(),
+            prompts=pm,
+            config=CodeAgentConfig(
+                architecture_planning=False,
+                sequential_generation=False,
+                hard_validation=False,
+                exec_fix_max_iterations=0,
+                review_max_rounds=0,
+            ),
+            stage_dir=stage_dir,
+            progress_callback=events.append,
+        )
+
+        result = agent.generate("topic", "plan", "primary_metric", "")
+
+        assert "main.py" in result.files
+        assert any("CodeAgent.generate() started" in e for e in events)
+        assert any("CodeAgent.generate() done" in e for e in events)
+
+    def test_wall_clock_budget_check_raises(
+        self, stage_dir: Path, pm: PromptManager,
+    ) -> None:
+        agent = CodeAgent(
+            llm=FakeLLM(),
+            prompts=pm,
+            config=CodeAgentConfig(),
+            stage_dir=stage_dir,
+        )
+        agent._deadline = 0.0  # Force an expired budget for the focused check.
+
+        with pytest.raises(TimeoutError, match="wall-clock budget exceeded"):
+            agent._check_budget("test")
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +653,7 @@ class TestConfigIntegration:
                     "enabled": False,
                     "tree_search_enabled": True,
                     "tree_search_candidates": 5,
+                    "wall_clock_budget_sec": 123,
                 },
             },
         }
@@ -621,6 +661,7 @@ class TestConfigIntegration:
         assert cfg.experiment.code_agent.enabled is False
         assert cfg.experiment.code_agent.tree_search_enabled is True
         assert cfg.experiment.code_agent.tree_search_candidates == 5
+        assert cfg.experiment.code_agent.wall_clock_budget_sec == 123
 
 
 # ---------------------------------------------------------------------------

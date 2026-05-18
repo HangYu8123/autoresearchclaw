@@ -558,6 +558,7 @@ print("condition=Ablation metric=85.0")
                 primary_model="deepseek-v4-pro",
                 base_url="https://api.deepseek.com/v1",
                 api_key_env="DEEPSEEK_API_KEY",
+                api_key="inline-key",
                 provider="deepseek",
             ),
         )
@@ -567,6 +568,7 @@ print("condition=Ablation metric=85.0")
 
         assert result is None
         assert captured["model"] == "deepseek-v4-pro"
+        assert captured["api_key"] == "inline-key"
 
 
 # ---------------------------------------------------------------------------

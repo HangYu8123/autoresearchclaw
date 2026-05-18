@@ -43,6 +43,7 @@ llm:
   primary_model: "deepseek-v4-pro"
   fallback_models:
     - "deepseek-v4-flash"
+  max_tokens: 65536  # DeepSeek V4 supports large outputs; lower this for smaller providers
   # --- MiniMax provider example ---
   # provider: "minimax"
   # api_key_env: "MINIMAX_API_KEY"
@@ -101,6 +102,11 @@ experiment:
     # pip_pre_install: ["torchdiffeq", "einops"]
     auto_install_deps: true
     shm_size_mb: 2048
+    # Environment variables available inside Docker experiment runs.
+    env:
+      MPLCONFIGDIR: "/tmp/matplotlib"
+    # Copy selected variables from the host environment if they are set.
+    env_from_host: ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"]
     keep_containers: false
   ssh_remote:
     host: ""                # SSH hostname or IP

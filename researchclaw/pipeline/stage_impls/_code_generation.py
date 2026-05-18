@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -171,6 +172,37 @@ if __name__ == "__main__":
 '''
 
 
+def _write_stage10_progress(stage_dir: Path, run_dir: Path, message: str) -> None:
+    """Write CodeAgent progress and refresh the run heartbeat."""
+    payload = {
+        "stage": int(Stage.CODE_GENERATION),
+        "stage_name": Stage.CODE_GENERATION.name,
+        "message": message,
+        "timestamp": _utcnow_iso(),
+    }
+    try:
+        (stage_dir / "code_agent_progress.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        logger.debug("Failed to write CodeAgent progress", exc_info=True)
+
+    heartbeat = {
+        "pid": os.getpid(),
+        "last_stage": int(Stage.CODE_GENERATION),
+        "last_stage_name": Stage.CODE_GENERATION.name,
+        "run_id": run_dir.name,
+        "timestamp": payload["timestamp"],
+        "progress": message,
+    }
+    try:
+        (run_dir / "heartbeat.json").write_text(
+            json.dumps(heartbeat, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        logger.debug("Failed to refresh Stage 10 heartbeat", exc_info=True)
+
+
 def _execute_code_generation(
     stage_dir: Path,
     run_dir: Path,
@@ -185,6 +217,29 @@ def _execute_code_generation(
     max_repair = 5  # BUG-14: Increased from 3 to give more chances for critical bugs
     files: dict[str, str] = {}
     validation_log: list[str] = []
+
+    if config.experiment.mode == "sandbox":
+        from researchclaw.experiment.sandbox import validate_python_path
+
+        err = validate_python_path(
+            config.experiment.sandbox.python_path,
+            base_dir=Path.cwd(),
+        )
+        if err:
+            detail = f"Stage 10 sandbox preflight failed: {err}"
+            (stage_dir / "validation_report.md").write_text(
+                "# Code Generation Preflight\n\n"
+                f"**Status**: FAILED\n\n{detail}\n",
+                encoding="utf-8",
+            )
+            logger.error(detail)
+            return StageResult(
+                stage=Stage.CODE_GENERATION,
+                status=StageStatus.FAILED,
+                artifacts=("validation_report.md",),
+                evidence_refs=("stage-10/validation_report.md",),
+                error=detail,
+            )
 
     # --- Detect available packages for sandbox ---
     _pm = prompts or PromptManager()
@@ -493,6 +548,7 @@ def _execute_code_generation(
                     model=_oc_model,
                     llm_base_url=config.llm.base_url,
                     api_key_env=config.llm.api_key_env,
+                    api_key=config.llm.api_key,
                     llm_provider=config.llm.provider,
                     timeout_sec=_oc_cfg.timeout_sec,
                     max_retries=_oc_cfg.max_retries,
@@ -619,8 +675,12 @@ def _execute_code_generation(
             experiment_config=config.experiment,
             domain_profile=_domain_profile,
             code_search_result=_code_search_result,
+            progress_callback=lambda msg: _write_stage10_progress(
+                stage_dir, run_dir, msg
+            ),
         )
         try:
+            _write_stage10_progress(stage_dir, run_dir, "CodeAgent starting")
             _agent_result = _agent.generate(
                 topic=config.research.topic,
                 exp_plan=exp_plan,

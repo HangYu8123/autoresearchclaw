@@ -141,6 +141,27 @@ def _set_response_timeout(resp: Any, timeout_sec: float) -> None:
         return
 
 
+class LLMReadTimeoutError(TimeoutError):
+    """Raised when a model response read times out and should be demoted."""
+
+
+def _is_read_timeout(exc: BaseException) -> bool:
+    if isinstance(exc, LLMReadTimeoutError):
+        return True
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, BaseException):
+            return _is_read_timeout(reason)
+    message = str(exc).lower()
+    return (
+        "timed out" in message
+        or "read timeout" in message
+        or "response body read exceeded" in message
+    )
+
+
 @dataclass
 class LLMResponse:
     """Parsed response from the LLM API."""
@@ -251,6 +272,7 @@ class LLMClient:
             wire_api=getattr(rc_config.llm, "wire_api", "chat_completions"),
             primary_model=rc_config.llm.primary_model or "gpt-4o",
             fallback_models=list(rc_config.llm.fallback_models or []),
+            max_tokens=getattr(rc_config.llm, "max_tokens", 4096),
             fallback_url=fallback_url,
             fallback_api_key=fallback_api_key,
             timeout_sec=getattr(rc_config.llm, "timeout_sec", 600),
@@ -458,6 +480,10 @@ class LLMClient:
 
                 raise  # Other HTTP errors
             except urllib.error.URLError as e:
+                if _is_read_timeout(e):
+                    raise LLMReadTimeoutError(
+                        f"Read timeout for model {model}: {e}"
+                    ) from e
                 if attempt < self.config.max_retries - 1:
                     last_err = f"URLError: {e}"
                     delay = min(
@@ -469,6 +495,10 @@ class LLMClient:
                 raise
             except (TimeoutError, OSError) as exc:
                 # Covers TimeoutError, ConnectionResetError, IncompleteRead, etc.
+                if _is_read_timeout(exc):
+                    raise LLMReadTimeoutError(
+                        f"Read timeout for model {model}: {exc}"
+                    ) from exc
                 if attempt < self.config.max_retries - 1:
                     last_err = f"Timeout/OSError: {exc}"
                     delay = self.config.retry_base_delay * (2**attempt)

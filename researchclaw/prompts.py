@@ -188,6 +188,8 @@ class PromptManager:
         return RenderedPrompt(
             system=_render(entry["system"], kw),
             user=_render(entry["user"], kw),
+            json_mode=entry.get("json_mode", False),
+            max_tokens=entry.get("max_tokens"),
         )
 
     # -- introspection ----------------------------------------------------
@@ -254,6 +256,56 @@ _SECTION_TARGET_ALIASES: dict[str, str] = {
     "societal impact": "broader impact",
     "ethical considerations": "broader impact",
 }
+base = 1024
+_DEFAULT_STAGE_TOKEN_BUDGETS: dict[str, int] = {
+    "topic_init": base * 12,
+    "problem_decompose": base * 12,
+    "search_strategy":  base * 16,
+    "literature_collect": base * 24,
+    "literature_screen": base * 24,
+    "knowledge_extract": base * 24,
+    "synthesis": base * 24,
+    "hypothesis_gen": base * 24,
+    "experiment_design": base * 32,
+    "code_generation": base * 128,
+    "resource_planning": base * 16,
+    "result_analysis": base * 32,
+    "research_decision": base * 16,
+    "paper_outline": base * 32,
+    "paper_draft": base * 128,
+    "peer_review": base * 32,
+    "paper_revision": base * 64,
+    "quality_gate": base * 16,
+    "knowledge_archive": base * 16,
+    "export_publish": base * 32,
+}
+
+_DEFAULT_SUB_PROMPT_TOKEN_BUDGETS: dict[str, int] = {
+    "hypothesis_synthesize": base * 12,
+    "analysis_synthesize": base * 16,
+    "code_repair": base * 32,
+    "iterative_improve": base * 32,
+    "iterative_repair": base * 32,
+    "architecture_planning": base * 32,
+    "generate_single_file": base * 32,
+    "code_exec_fix": base * 32,
+    "code_reviewer": base * 16,
+}
+
+
+def _apply_token_budgets(
+    entries: dict[str, dict[str, Any]],
+    budgets: dict[str, int],
+    *,
+    entry_type: str,
+) -> None:
+    missing = sorted(set(budgets) - set(entries))
+    if missing:
+        joined = ", ".join(missing)
+        raise RuntimeError(f"Unknown {entry_type} token budget keys: {joined}")
+    for name, max_tokens in budgets.items():
+        entries[name]["max_tokens"] = max_tokens
+
 
 # -- Reusable blocks -----------------------------------------------------
 
@@ -2540,3 +2592,14 @@ _DEFAULT_STAGES: dict[str, dict[str, Any]] = {
         "max_tokens": 16384,
     },
 }
+
+_apply_token_budgets(
+    _DEFAULT_SUB_PROMPTS,
+    _DEFAULT_SUB_PROMPT_TOKEN_BUDGETS,
+    entry_type="sub-prompt",
+)
+_apply_token_budgets(
+    _DEFAULT_STAGES,
+    _DEFAULT_STAGE_TOKEN_BUDGETS,
+    entry_type="stage",
+)

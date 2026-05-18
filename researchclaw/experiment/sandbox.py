@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -45,8 +46,43 @@ def validate_entry_point_resolved(staging: Path, entry_point: str) -> str | None
     """
     resolved = (staging / entry_point).resolve()
     staging_resolved = staging.resolve()
-    if not resolved.is_relative_to(staging_resolved):
+    try:
+        resolved.relative_to(staging_resolved)
+    except ValueError:
         return f"Entry point escapes staging directory: {entry_point}"
+    return None
+
+
+def validate_python_path(
+    python_path: str,
+    *,
+    base_dir: Path | None = None,
+) -> str | None:
+    """Validate sandbox interpreter path before launching subprocesses."""
+    raw = (python_path or "").strip()
+    if not raw:
+        return "experiment.sandbox.python_path is empty"
+
+    if raw in {"python", "python3"}:
+        if shutil.which(raw):
+            return None
+        return f"experiment.sandbox.python_path '{raw}' is not on PATH"
+
+    path = Path(raw)
+    display = raw
+    if not path.is_absolute():
+        path = (base_dir or Path.cwd()) / path
+
+    if not path.exists():
+        hint = ""
+        if os.name == "nt" and ("/bin/" in raw.replace("\\", "/") or raw.endswith("/bin/python3")):
+            hint = "; on Windows use '.venv/Scripts/python.exe'"
+        return (
+            f"experiment.sandbox.python_path does not exist: {display}"
+            f"{hint}"
+        )
+    if path.is_dir():
+        return f"experiment.sandbox.python_path points to a directory: {display}"
     return None
 
 # Matches both plain "metric: value" and "condition=xxx metric: value" formats

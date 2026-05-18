@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import re
 import sys
 import yaml
 
@@ -27,6 +28,7 @@ def _safe_int(val: Any, default: int) -> int:
 
 
 _VALID_NETWORK_POLICIES = {"none", "setup_only", "pip_only", "full"}
+_SAFE_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _validate_network_policy(val: object, default: str = "setup_only") -> str:
@@ -42,6 +44,43 @@ def _validate_network_policy(val: object, default: str = "setup_only") -> str:
         )
         return default
     return s
+
+
+def _parse_env_mapping(val: object) -> tuple[tuple[str, str], ...]:
+    """Parse a YAML env mapping into stable, sanitized key/value pairs."""
+    if not isinstance(val, dict):
+        return ()
+    pairs: list[tuple[str, str]] = []
+    for raw_name, raw_value in val.items():
+        name = str(raw_name).strip()
+        if not name or raw_value is None or not _SAFE_ENV_NAME_RE.fullmatch(name):
+            continue
+        value = str(raw_value).replace("\x00", "")
+        if value:
+            pairs.append((name, value))
+    return tuple(pairs)
+
+
+def _parse_env_names(val: object) -> tuple[str, ...]:
+    """Parse host environment variable names from YAML."""
+    if val is None:
+        return ()
+    raw_names: object
+    if isinstance(val, str):
+        raw_names = [val]
+    else:
+        raw_names = val
+    if not isinstance(raw_names, (list, tuple)):
+        return ()
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw_name in raw_names:
+        name = str(raw_name).strip()
+        if not name or name in seen or not _SAFE_ENV_NAME_RE.fullmatch(name):
+            continue
+        names.append(name)
+        seen.add(name)
+    return tuple(names)
 
 
 def _safe_float(val: Any, default: float) -> float:
@@ -197,6 +236,7 @@ class LlmConfig:
     fallback_models: tuple[str, ...] = ()
     s2_api_key: str = ""
     notes: str = ""
+    max_tokens: int = 4096
     timeout_sec: int = 600
     acp: AcpConfig = field(default_factory=AcpConfig)
 
@@ -268,6 +308,8 @@ class DockerSandboxConfig:
     shm_size_mb: int = 2048
     container_python: str = "/usr/bin/python3"
     keep_containers: bool = False
+    env: tuple[tuple[str, str], ...] = ()
+    env_from_host: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -313,6 +355,8 @@ class CodeAgentConfig:
     tree_search_eval_timeout_sec: int = 120
     # Phase 5: Multi-agent review dialog
     review_max_rounds: int = 2
+    # Total Stage 10 CodeAgent wall-clock budget after OpenCode fallback.
+    wall_clock_budget_sec: int = 600
 
 
 @dataclass(frozen=True)
@@ -971,6 +1015,7 @@ def _parse_llm_config(data: dict[str, Any]) -> LlmConfig:
         fallback_models=tuple(data.get("fallback_models") or ()),
         s2_api_key=data.get("s2_api_key", ""),
         notes=data.get("notes", ""),
+        max_tokens=_safe_int(data.get("max_tokens"), 4096),
         timeout_sec=_safe_int(data.get("timeout_sec"), 600),
         acp=AcpConfig(
             agent=acp_data.get("agent", "claude"),
@@ -1035,6 +1080,8 @@ def _parse_experiment_config(data: dict[str, Any]) -> ExperimentConfig:
             shm_size_mb=_safe_int(docker_data.get("shm_size_mb"), 2048),
             container_python=docker_data.get("container_python", "/usr/bin/python3"),
             keep_containers=bool(docker_data.get("keep_containers", False)),
+            env=_parse_env_mapping(docker_data.get("env", {})),
+            env_from_host=_parse_env_names(docker_data.get("env_from_host", ())),
         ),
         ssh_remote=SshRemoteConfig(
             host=ssh_data.get("host", ""),
@@ -1163,6 +1210,7 @@ def _parse_code_agent_config(data: dict[str, Any]) -> CodeAgentConfig:
             data.get("tree_search_eval_timeout_sec"), 120
         ),
         review_max_rounds=_safe_int(data.get("review_max_rounds"), 2),
+        wall_clock_budget_sec=_safe_int(data.get("wall_clock_budget_sec"), 600),
     )
 
 

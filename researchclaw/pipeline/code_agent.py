@@ -75,6 +75,9 @@ class CodeAgentConfig:
     # Phase 5: Multi-agent review dialog
     review_max_rounds: int = 2
 
+    # Total wall-clock budget for the whole CodeAgent run.
+    wall_clock_budget_sec: int = 600
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -173,6 +176,7 @@ class CodeAgent:
         experiment_config: Any | None = None,
         domain_profile: Any | None = None,
         code_search_result: Any | None = None,
+        progress_callback: Any | None = None,
     ) -> None:
         self._llm = llm
         self._pm = prompts
@@ -182,6 +186,8 @@ class CodeAgent:
         self._exp_config = experiment_config
         self._domain_profile = domain_profile
         self._code_search_result = code_search_result
+        self._progress_callback = progress_callback
+        self._deadline: float | None = None
         self._calls = 0
         self._runs = 0
         self._log: list[str] = []
@@ -199,12 +205,15 @@ class CodeAgent:
     ) -> CodeAgentResult:
         """Execute all enabled phases and return generated files."""
         t0 = time.time()
+        budget = int(getattr(self._cfg, "wall_clock_budget_sec", 0) or 0)
+        self._deadline = time.monotonic() + budget if budget > 0 else None
         self._log_event("CodeAgent.generate() started")
 
         # Phase 1: Blueprint planning
         arch_spec = ""
         blueprint = None
         if self._cfg.architecture_planning:
+            self._check_budget("Phase 1: Blueprint planning")
             arch_spec, blueprint = self._phase1_blueprint(
                 topic, exp_plan, metric,
             )
@@ -212,6 +221,7 @@ class CodeAgent:
         # Phase 2: Code generation
         nodes_explored = 0
         if self._cfg.tree_search_enabled and self._sandbox_factory:
+            self._check_budget("Phase 3: Solution tree search")
             best, nodes_explored = self._phase3_tree_search(
                 topic, exp_plan, metric, pkg_hint, arch_spec, max_tokens,
             )
@@ -221,15 +231,18 @@ class CodeAgent:
             and self._is_valid_blueprint(blueprint)
         ):
             # Sequential file generation following blueprint
+            self._check_budget("Phase 2: Sequential generation")
             files = self._phase2_sequential_generate(
                 topic, exp_plan, metric, pkg_hint, arch_spec, blueprint,
             )
             # Hard validation gates (E-03)
             if self._cfg.hard_validation:
+                self._check_budget("Phase 2.5: Hard validation")
                 files = self._hard_validate_and_repair(
                     files, topic, exp_plan, metric, pkg_hint, arch_spec,
                 )
             # Exec-fix loop
+            self._check_budget("Phase 3: Execution fix loop")
             files = self._exec_fix_loop(files)
             best = SolutionNode(
                 node_id="sequential", files=files, runs_ok=True, score=1.0,
@@ -241,11 +254,13 @@ class CodeAgent:
                     "  Sequential generation requested but blueprint "
                     "invalid — falling back to single-shot"
                 )
+            self._check_budget("Phase 2: Single-shot generation")
             files = self._phase2_generate_and_fix(
                 topic, exp_plan, metric, pkg_hint, arch_spec, max_tokens,
             )
             # Hard validation gates (E-03) for single-shot too
             if self._cfg.hard_validation and files:
+                self._check_budget("Phase 2.5: Hard validation")
                 files = self._hard_validate_and_repair(
                     files, topic, exp_plan, metric, pkg_hint, arch_spec,
                 )
@@ -257,6 +272,7 @@ class CodeAgent:
         # Phase 5: Review dialog
         review_rounds = 0
         if self._cfg.review_max_rounds > 0:
+            self._check_budget("Phase 4: Review dialog")
             best.files, review_rounds = self._phase4_review(
                 best.files, topic, exp_plan, metric,
             )
@@ -302,10 +318,12 @@ class CodeAgent:
             sp = type(sp)(
                 system=sp.system,
                 user=sp.user + "\n\n" + domain_context,
+                json_mode=sp.json_mode,
+                max_tokens=sp.max_tokens,
             )
             self._log_event("  Injected domain context into blueprint prompt")
 
-        resp = self._chat(sp.system, sp.user, max_tokens=8192)
+        resp = self._chat(sp.system, sp.user, max_tokens=sp.max_tokens or 1024 * 24)
 
         # Extract YAML block from response
         arch_spec = resp.content
@@ -496,6 +514,7 @@ class CodeAgent:
         file_specs.sort(key=lambda f: f.get("generation_order", 99))
 
         for file_spec in file_specs:
+            self._check_budget("Phase 2: Sequential generation")
             file_name = file_spec.get("name", "")
             if not file_name:
                 continue
@@ -543,7 +562,7 @@ class CodeAgent:
                 exp_plan=exp_plan[:4000],  # Truncate to avoid token overflow
                 pkg_hint=pkg_hint,
             )
-            resp = self._chat(sp.system, sp.user, max_tokens=8192)
+            resp = self._chat(sp.system, sp.user, max_tokens=sp.max_tokens or 8192)
 
             # Extract code from response
             code = self._extract_single_file_code(resp.content, file_name)
@@ -920,7 +939,11 @@ class CodeAgent:
         )
 
         sys_prompt = self._pm.system("code_generation")
-        resp = self._chat(sys_prompt, prompt, max_tokens=16384)
+        resp = self._chat(
+            sys_prompt,
+            prompt,
+            max_tokens=self._pm.max_tokens("code_generation") or 16384,
+        )
 
         fixed = self._extract_files(resp.content)
         if fixed:
@@ -965,6 +988,7 @@ class CodeAgent:
             return files
 
         for i in range(self._cfg.exec_fix_max_iterations):
+            self._check_budget("Phase 3: Execution fix loop")
             result = self._run_in_sandbox(files)
             if result.returncode == 0:
                 self._log_event(f"  Exec-fix iter {i}: code runs OK")
@@ -1020,8 +1044,14 @@ class CodeAgent:
         files = self._extract_files(resp.content)
         if not files and resp.content.strip():
             # Retry with higher token budget
-            self._log_event("  Empty extraction, retrying with 32768 tokens")
-            resp = self._chat(sp.system, sp.user, max_tokens=32768)
+            retry_tokens = max(
+                max_tokens * 2,
+                self._pm.max_tokens("code_generation") or 32768,
+            )
+            self._log_event(
+                f"  Empty extraction, retrying with {retry_tokens} tokens"
+            )
+            resp = self._chat(sp.system, sp.user, max_tokens=retry_tokens)
             files = self._extract_files(resp.content)
 
         return files
@@ -1062,7 +1092,7 @@ class CodeAgent:
             returncode=str(result.returncode),
             files_context=files_ctx,
         )
-        resp = self._chat(sp.system, sp.user, max_tokens=16384)
+        resp = self._chat(sp.system, sp.user, max_tokens=sp.max_tokens or 16384)
 
         fixed = self._extract_files(resp.content)
         if fixed:
@@ -1168,7 +1198,7 @@ class CodeAgent:
             "shown. Preserve experiment design and scientific methodology. "
             "Output the COMPLETE fixed file."
         )
-        resp = self._chat(sys_prompt, prompt, max_tokens=16384)
+        resp = self._chat(sys_prompt, prompt, max_tokens=32768)
 
         fixed = self._extract_files(resp.content)
         if not fixed:
@@ -1209,6 +1239,7 @@ class CodeAgent:
         # Generate initial candidates
         n_cand = max(self._cfg.tree_search_candidates, 1)
         for k in range(n_cand):
+            self._check_budget("Phase 3: Solution tree search")
             self._log_event(f"  Generating candidate {k + 1}/{n_cand}")
             files = self._generate_code(
                 topic, exp_plan, metric, pkg_hint, arch_spec, max_tokens,
@@ -1223,6 +1254,7 @@ class CodeAgent:
 
         # Iterative evaluate-fix-branch loop
         for depth in range(self._cfg.tree_search_max_depth):
+            self._check_budget("Phase 3: Solution tree search")
             # Evaluate unevaluated nodes
             for node in all_nodes:
                 if not node.evaluated:
@@ -1283,6 +1315,7 @@ class CodeAgent:
             node.score = 0.0
             return
 
+        self._check_budget("sandbox evaluation")
         result = self._run_in_sandbox(
             node.files,
             timeout_sec=self._cfg.tree_search_eval_timeout_sec,
@@ -1325,6 +1358,7 @@ class CodeAgent:
 
         rounds = 0
         for r in range(self._cfg.review_max_rounds):
+            self._check_budget("Phase 4: Review dialog")
             rounds += 1
             files_ctx = self._format_files(files)
 
@@ -1335,7 +1369,7 @@ class CodeAgent:
                 metric=metric,
                 files_context=files_ctx,
             )
-            resp = self._chat(sp.system, sp.user, max_tokens=4096)
+            resp = self._chat(sp.system, sp.user, max_tokens=sp.max_tokens or 4096)
 
             review = self._parse_json(resp.content)
             if not isinstance(review, dict) or not review:
@@ -1367,7 +1401,11 @@ class CodeAgent:
                 "including unchanged files."
             )
             sys_prompt = self._pm.system("code_generation")
-            fix_resp = self._chat(sys_prompt, fix_prompt, max_tokens=16384)
+            fix_resp = self._chat(
+                sys_prompt,
+                fix_prompt,
+                max_tokens=self._pm.max_tokens("code_generation") or 16384,
+            )
 
             fixed = self._extract_files(fix_resp.content)
             if fixed:
@@ -1380,6 +1418,7 @@ class CodeAgent:
 
     def _chat(self, system: str, user: str, max_tokens: int = 8192) -> Any:
         """Make an LLM call and track count."""
+        self._check_budget("LLM call")
         self._calls += 1
         messages = [{"role": "user", "content": user}]
         return self._llm.chat(
@@ -1407,6 +1446,7 @@ class CodeAgent:
         if not self._sandbox_factory:
             raise RuntimeError("No sandbox factory configured")
 
+        self._check_budget("sandbox run")
         self._runs += 1
         timeout = timeout_sec or self._cfg.exec_fix_timeout_sec
 
@@ -1416,7 +1456,7 @@ class CodeAgent:
         for fname, code in files.items():
             fpath = (run_dir / fname).resolve()
             # BUG-CA-10: Prevent path traversal from LLM-generated filenames
-            if not fpath.is_relative_to(run_dir.resolve()):
+            if not self._path_is_relative_to(fpath, run_dir.resolve()):
                 self._log_event(f"  WARNING: Skipping path-traversal filename: {fname}")
                 continue
             fpath.parent.mkdir(parents=True, exist_ok=True)
@@ -1450,6 +1490,14 @@ class CodeAgent:
         for fname in sorted(files):
             parts.append(f"```filename:{fname}\n{files[fname]}\n```")
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _path_is_relative_to(path: Path, parent: Path) -> bool:
+        try:
+            path.relative_to(parent)
+            return True
+        except ValueError:
+            return False
 
     @staticmethod
     def _parse_json(text: str) -> dict[str, Any] | None:
@@ -1489,6 +1537,17 @@ class CodeAgent:
         """Log to both Python logger and the internal validation log."""
         logger.info("[CodeAgent] %s", msg)
         self._log.append(msg)
+        if self._progress_callback is not None:
+            try:
+                self._progress_callback(msg)
+            except Exception:
+                logger.debug("CodeAgent progress callback failed", exc_info=True)
+
+    def _check_budget(self, phase: str) -> None:
+        if self._deadline is None:
+            return
+        if self._deadline - time.monotonic() <= 0:
+            raise TimeoutError(f"CodeAgent wall-clock budget exceeded during {phase}")
 
 
 # ---------------------------------------------------------------------------

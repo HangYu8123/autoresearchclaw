@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 _CONTAINER_COUNTER = 0
 _counter_lock = threading.Lock()
+_SAFE_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _next_container_name() -> str:
@@ -473,14 +474,9 @@ class DockerSandbox:
             else:
                 cmd.extend(["--gpus", "all"])
 
-        _SAFE_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-        if env_overrides:
-            for name, value in sorted(env_overrides.items()):
-                if not value or not _SAFE_ENV_NAME.match(name):
-                    continue
-                # Strip null bytes from values to prevent subprocess ValueError
-                safe_value = str(value).replace("\x00", "")
-                cmd.extend(["-e", f"{name}={safe_value}"])
+        merged_env = self._merge_env(env_overrides)
+        for name, value in sorted(merged_env.items()):
+            cmd.extend(["-e", f"{name}={value}"])
 
         # Image + entry point (passed as CMD arg to entrypoint.sh)
         cmd.append(cfg.image)
@@ -489,6 +485,37 @@ class DockerSandbox:
             cmd.extend(entry_args)
 
         return cmd
+
+    def _merge_env(self, env_overrides: dict[str, str] | None = None) -> dict[str, str]:
+        """Merge configured Docker env with per-call overrides."""
+        merged: dict[str, str] = {}
+
+        for name, value in self.config.env:
+            safe_value = self._sanitize_env_value(name, value)
+            if safe_value is not None:
+                merged[name] = safe_value
+
+        for name in self.config.env_from_host:
+            if not _SAFE_ENV_NAME.match(name):
+                continue
+            safe_value = self._sanitize_env_value(name, os.environ.get(name, ""))
+            if safe_value is not None:
+                merged[name] = safe_value
+
+        if env_overrides:
+            for name, value in env_overrides.items():
+                safe_value = self._sanitize_env_value(name, value)
+                if safe_value is not None:
+                    merged[name] = safe_value
+
+        return merged
+
+    @staticmethod
+    def _sanitize_env_value(name: str, value: object) -> str | None:
+        if not value or not _SAFE_ENV_NAME.match(name):
+            return None
+        safe_value = str(value).replace("\x00", "")
+        return safe_value or None
 
     def _write_requirements_txt(self, staging_dir: Path) -> None:
         """Generate requirements.txt in staging dir from auto-detected imports

@@ -149,9 +149,13 @@ class TestPromptManagerDefaults:
 
     def test_max_tokens(self) -> None:
         pm = PromptManager()
-        assert pm.max_tokens("code_generation") == 8192
-        assert pm.max_tokens("paper_draft") == 16384
-        assert pm.max_tokens("topic_init") is None
+        assert pm.max_tokens("code_generation") == 32768
+        assert pm.max_tokens("paper_draft") == 65536
+        assert pm.max_tokens("topic_init") == 8192
+        for stage in pm.stage_names():
+            value = pm.max_tokens(stage)
+            assert isinstance(value, int), f"{stage} should have a token budget"
+            assert value >= 8192, f"{stage} token budget is unexpectedly small"
 
     def test_block_topic_constraint(self) -> None:
         pm = PromptManager()
@@ -176,6 +180,7 @@ class TestPromptManagerDefaults:
         assert "model.py" in rp.user
         assert "SyntaxError" in rp.user
         assert rp.system
+        assert rp.max_tokens == 16384
 
     def test_sub_prompt_iterative_improve(self) -> None:
         pm = PromptManager()
@@ -188,6 +193,7 @@ class TestPromptManagerDefaults:
         )
         assert "val_loss" in ip.user
         assert "minimize" in ip.user
+        assert ip.max_tokens == 16384
 
     def test_sub_prompt_iterative_repair(self) -> None:
         pm = PromptManager()
@@ -195,6 +201,7 @@ class TestPromptManagerDefaults:
             "iterative_repair", issue_text="import error", all_files_ctx="..."
         )
         assert "import error" in irp.user
+        assert irp.max_tokens == 16384
 
 
 # ---------------------------------------------------------------------------

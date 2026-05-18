@@ -12,6 +12,7 @@ import pytest
 from researchclaw.llm.client import (
     LLMClient,
     LLMConfig,
+    LLMReadTimeoutError,
     LLMResponse,
     _NEW_PARAM_MODELS,
     _NO_TEMPERATURE_MODELS,
@@ -227,6 +228,7 @@ def test_from_rc_config_builds_expected_llm_config():
             wire_api="responses",
             primary_model="o3",
             fallback_models=("o3-mini", "gpt-4o"),
+            max_tokens=65536,
         )
     )
     client = LLMClient.from_rc_config(rc_config)
@@ -235,6 +237,7 @@ def test_from_rc_config_builds_expected_llm_config():
     assert client.config.wire_api == "responses"
     assert client.config.primary_model == "o3"
     assert client.config.fallback_models == ["o3-mini", "gpt-4o"]
+    assert client.config.max_tokens == 65536
 
 
 def test_responses_wire_api_uses_responses_endpoint(monkeypatch: pytest.MonkeyPatch):
@@ -559,6 +562,39 @@ def test_chat_uses_fallback_after_empty_response(monkeypatch: pytest.MonkeyPatch
     response = client.chat([{"role": "user", "content": "x"}])
     assert calls == ["deepseek-v4-pro", "deepseek-v4-flash"]
     assert response.content == "ok"
+
+
+def test_call_with_retry_demotes_read_timeout_without_same_model_retries(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls = 0
+
+    def fake_raw_call(
+        self: LLMClient,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        json_mode: bool,
+    ) -> LLMResponse:
+        _ = (self, model, messages, max_tokens, temperature, json_mode)
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(LLMClient, "_raw_call", fake_raw_call)
+    client = _make_client(primary_model="deepseek-v4-pro", fallback_models=[])
+
+    with pytest.raises(LLMReadTimeoutError):
+        client._call_with_retry(
+            "deepseek-v4-pro",
+            [{"role": "user", "content": "x"}],
+            16,
+            0.0,
+            False,
+        )
+
+    assert calls == 1
 
 
 def test_chat_allows_empty_content_filter_response(monkeypatch: pytest.MonkeyPatch):

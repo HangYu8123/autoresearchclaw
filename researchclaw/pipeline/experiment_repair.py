@@ -671,6 +671,7 @@ def _repair_via_opencode(
             model=_oc_model,
             llm_base_url=getattr(config.llm, "base_url", "") or "",
             api_key_env=getattr(config.llm, "api_key_env", "") or "",
+            api_key=getattr(config.llm, "api_key", "") or "",
             llm_provider=getattr(config.llm, "provider", "openai-compatible") or "openai-compatible",
             timeout_sec=getattr(_oc_cfg, "timeout_sec", 600),
             max_retries=getattr(_oc_cfg, "max_retries", 1),

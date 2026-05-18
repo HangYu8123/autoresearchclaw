@@ -198,13 +198,13 @@ class TestOpenCodeBridge:
             time_budget_sec=300,
         )
         cfg = json.loads((ws / "opencode.json").read_text())
-        # OpenCode CLI/model config uses the bare model name for the configured
-        # provider.
-        assert cfg["model"] == "gpt-5.2"
+        assert cfg["model"] == "azure/gpt-5.2"
         assert "provider" in cfg
-        assert "openai" in cfg["provider"]
-        assert cfg["provider"]["openai"]["options"]["baseURL"] == "https://huaxi.openai.azure.com/openai/v1"
-        assert "{env:AZURE_OPENAI_API_KEY}" in cfg["provider"]["openai"]["options"]["apiKey"]
+        assert "azure" in cfg["provider"]
+        assert cfg["provider"]["azure"]["npm"] == "@ai-sdk/openai-compatible"
+        assert cfg["provider"]["azure"]["options"]["baseURL"] == "https://huaxi.openai.azure.com/openai/v1"
+        assert "{env:AZURE_OPENAI_API_KEY}" in cfg["provider"]["azure"]["options"]["apiKey"]
+        assert "gpt-5.2" in cfg["provider"]["azure"]["models"]
 
     def test_opencode_config_openai_format(self, tmp_path):
         bridge = OpenCodeBridge(
@@ -222,16 +222,17 @@ class TestOpenCodeBridge:
             time_budget_sec=300,
         )
         cfg = json.loads((ws / "opencode.json").read_text())
-        assert cfg["model"] == "gpt-4o"
-        assert "openai" in cfg["provider"]
+        assert cfg["model"] == "openai-compatible/gpt-4o"
+        assert "openai-compatible" in cfg["provider"]
+        assert cfg["provider"]["openai-compatible"]["npm"] == "@ai-sdk/openai-compatible"
 
-    def test_opencode_config_strips_prefixed_model(self, tmp_path):
-        """Provider-prefixed model values should be normalized to bare names."""
+    def test_opencode_config_uses_custom_deepseek_provider(self, tmp_path):
+        """DeepSeek should be registered as a custom OpenAI-compatible provider."""
         bridge = OpenCodeBridge(
-            model="anthropic/claude-sonnet-4-6",
-            llm_base_url="https://huaxi.openai.azure.com/openai/v1",
-            api_key_env="AZURE_API_KEY",
-            llm_provider="azure",
+            model="deepseek-v4-pro",
+            llm_base_url="https://api.deepseek.com/v1",
+            api_key_env="DEEPSEEK_API_KEY",
+            llm_provider="deepseek",
         )
         ws = bridge._prepare_workspace(
             stage_dir=tmp_path,
@@ -243,27 +244,32 @@ class TestOpenCodeBridge:
             time_budget_sec=300,
         )
         cfg = json.loads((ws / "opencode.json").read_text())
-        assert cfg["model"] == "claude-sonnet-4-6"
+        assert cfg["model"] == "deepseek/deepseek-v4-pro"
+        assert "deepseek" in cfg["provider"]
+        assert cfg["provider"]["deepseek"]["npm"] == "@ai-sdk/openai-compatible"
+        assert cfg["provider"]["deepseek"]["options"]["baseURL"] == "https://api.deepseek.com/v1"
+        assert cfg["provider"]["deepseek"]["options"]["apiKey"] == "{env:DEEPSEEK_API_KEY}"
+        assert "deepseek-v4-pro" in cfg["provider"]["deepseek"]["models"]
 
     def test_resolve_model_azure_uses_openai_prefix(self):
-        """Azure endpoint → uses the bare model name."""
+        """Azure endpoint gets a provider/model OpenCode id."""
         bridge = OpenCodeBridge(
             model="gpt-5.2",
             llm_base_url="https://huaxi.openai.azure.com/openai/v1",
             llm_provider="azure",
         )
         resolved = bridge._resolve_opencode_model()
-        assert resolved == "gpt-5.2"
+        assert resolved == "azure/gpt-5.2"
 
-    def test_resolve_model_strips_explicit_prefix(self):
-        """Model with '/' prefix should be stripped for OpenCode CLI."""
+    def test_resolve_model_preserves_explicit_prefix(self):
+        """Model with '/' prefix should not be stripped for OpenCode CLI."""
         bridge = OpenCodeBridge(
             model="anthropic/claude-sonnet-4-6",
             llm_base_url="https://huaxi.openai.azure.com/openai/v1",
             llm_provider="azure",
         )
         resolved = bridge._resolve_opencode_model()
-        assert resolved == "claude-sonnet-4-6"
+        assert resolved == "anthropic/claude-sonnet-4-6"
 
     def test_resolve_model_no_model_default(self):
         """Empty model string should fail fast instead of hardcoding a model."""
@@ -398,6 +404,38 @@ class TestOpenCodeBridge:
 
         assert success is True
         assert run_mock.call_args.args[0][0].endswith("opencode.cmd")
+        assert run_mock.call_args.args[0][3] == "openai-compatible/gpt-5.2"
+
+    def test_invoke_opencode_sets_resolved_api_key_env_without_logging_secret(
+        self, tmp_path
+    ):
+        (tmp_path / "opencode.json").write_text("{}")
+        bridge = OpenCodeBridge(
+            model="deepseek/deepseek-v4-pro",
+            llm_base_url="https://api.deepseek.com/v1",
+            api_key_env="DEEPSEEK_API_KEY",
+            api_key="inline-secret",
+            llm_provider="deepseek",
+            timeout_sec=10,
+        )
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = "failed inline-secret"
+        mock_result.stderr = ""
+
+        with patch(
+            "researchclaw.pipeline.opencode_bridge.shutil.which",
+            return_value="opencode",
+        ), patch(
+            "researchclaw.pipeline.opencode_bridge.subprocess.run",
+            return_value=mock_result,
+        ) as run_mock:
+            success, log, _elapsed = bridge._invoke_opencode(tmp_path, "test prompt")
+
+        assert success is False
+        assert run_mock.call_args.kwargs["env"]["DEEPSEEK_API_KEY"] == "inline-secret"
+        assert "inline-secret" not in log
+        assert "[REDACTED]" in log
 
 
 # ============================================================

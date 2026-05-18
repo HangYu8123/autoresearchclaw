@@ -70,7 +70,7 @@ blocks:
     '
 stages:
   code_generation:
-    max_tokens: 8192
+    max_tokens: 32768
     system: You are a computational scientist who writes real, runnable experiments. Your code implements actual algorithms
       with real mathematical operations. You NEVER fake results with random number generators. Always use the ```filename:xxx.py
       format for each file. Use numpy for numerical computation. Keep code self-contained and deterministic.
@@ -92,6 +92,7 @@ stages:
       \ are experiment results\n- Do NOT use `random.uniform()` to simulate a decreasing loss curve\n- Do NOT hardcode metric\
       \ values or use trivial arithmetic as metrics\n- Do NOT run a fixed number of iterations without any convergence check\n- Do NOT implement convergence_rate or similar metrics as dummy return values\n  (e.g. returning 1.0 or a constant) — measure actual iterations to convergence\n- If you report convergence_rate, define it as iterations_to_convergence / max_iterations\n  or similar — it MUST differ between algorithms\n\nNUMPY 2.x COMPATIBILITY (CRITICAL):\n- np.trapz is REMOVED → use np.trapezoid\n- np.erfinv does NOT exist → use scipy.special.erfinv\n- np.bool, np.int, np.float, np.complex are REMOVED → use Python builtins\n- np.str, np.object are REMOVED → use str, object\n- np.math is REMOVED → use math module\n\nExperiment plan:\n{exp_plan}"
   experiment_design:
+    max_tokens: 32768
     system: You are a principal investigator designing ML experiments.
     user: '{preamble}
 
@@ -104,7 +105,7 @@ stages:
 
       {hypotheses}'
   export_publish:
-    max_tokens: 16384
+    max_tokens: 32768
     system: You are a publication formatting editor.
     user: 'Format revised paper into clean final markdown for publication export.
 
@@ -114,6 +115,7 @@ stages:
 
       {revised}'
   hypothesis_gen:
+    max_tokens: 16384
     system: You formulate testable scientific hypotheses.
     user: 'Generate at least 2 falsifiable hypotheses from synthesis.
 
@@ -123,6 +125,7 @@ stages:
 
       {synthesis}'
   knowledge_archive:
+    max_tokens: 16384
     system: You produce reproducibility-focused research retrospectives.
     user: '{preamble}
 
@@ -143,6 +146,7 @@ stages:
 
       {revised}'
   knowledge_extract:
+    max_tokens: 16384
     json_mode: true
     system: You extract high-signal evidence cards from papers.
     user: 'Extract structured knowledge cards from shortlist.
@@ -155,6 +159,7 @@ stages:
 
       {shortlist}'
   literature_collect:
+    max_tokens: 16384
     json_mode: true
     system: You are a literature mining assistant.
     user: 'Generate candidate papers from the search plan.
@@ -169,6 +174,7 @@ stages:
 
       {plan_text}'
   literature_screen:
+    max_tokens: 16384
     json_mode: true
     system: You are a strict domain-aware reviewer. Reject off-topic papers aggressively.
     user: 'Perform merged relevance+quality screening and return shortlist.
@@ -190,7 +196,7 @@ stages:
 
       {candidates_text}'
   paper_draft:
-    max_tokens: 32768
+    max_tokens: 65536
     system: "You are a top-tier ML paper author writing for NeurIPS/ICML/ICLR.\n\n\
       KEY PRINCIPLES (from accepted paper analyses):\n\
       1. NOVELTY: A good paper has 1-2 key ideas and keeps the rest simple. Think sushi, not curry.\n\
@@ -242,7 +248,7 @@ stages:
 
       {outline}'
   paper_outline:
-    max_tokens: 8192
+    max_tokens: 16384
     system: >-
       You are an academic writing planner for NeurIPS/ICML/ICLR submissions.
       Structure the outline following the standard ML paper sequence: Abstract,
@@ -270,7 +276,7 @@ stages:
 
       {decision}'
   paper_revision:
-    max_tokens: 32768
+    max_tokens: 65536
     system: >-
       You are a paper revision expert for NeurIPS/ICML/ICLR submissions.
       Apply per-section revision strategies:
@@ -302,7 +308,7 @@ stages:
 
       {reviews}'
   peer_review:
-    max_tokens: 24576
+    max_tokens: 32768
     system: >-
       You are a rigorous NeurIPS 2024 area chair evaluating a paper submission.
       Score and comment on four dimensions following NeurIPS 2024 reviewer guidelines:
@@ -354,6 +360,7 @@ stages:
 
       {experiment_evidence}'
   problem_decompose:
+    max_tokens: 8192
     system: You are a senior research strategist.
     user: 'Decompose this research problem into at least 4 prioritized sub-questions.
 
@@ -365,6 +372,7 @@ stages:
 
       {goal_text}'
   quality_gate:
+    max_tokens: 8192
     json_mode: true
     system: You are a final quality gate evaluator.
     user: 'Evaluate revised paper quality and return JSON.
@@ -377,6 +385,7 @@ stages:
 
       {revised}'
   research_decision:
+    max_tokens: 8192
     system: You are a research program lead making go/no-go decisions.
     user: 'Make a PROCEED or PIVOT decision from analysis.
 
@@ -386,6 +395,7 @@ stages:
 
       {analysis}'
   resource_planning:
+    max_tokens: 8192
     json_mode: true
     system: You are an experiment scheduler.
     user: 'Create schedule JSON with GPU/time estimates.
@@ -396,6 +406,7 @@ stages:
 
       {exp_plan}'
   result_analysis:
+    max_tokens: 16384
     system: You are a quantitative ML analyst. Always cite exact numbers from the provided data.
     user: '{preamble}
 
@@ -413,6 +424,7 @@ stages:
 
       {context}'
   search_strategy:
+    max_tokens: 8192
     json_mode: true
     system: You design literature retrieval strategies and source verification plans. You aim for COMPREHENSIVE coverage — a good research paper needs 30-60 references.
     user: 'Create a merged search strategy package.
@@ -431,6 +443,7 @@ stages:
 
       {problem_tree}'
   synthesis:
+    max_tokens: 16384
     system: You are a synthesis specialist for literature reviews.
     user: 'Produce merged synthesis output (topic clusters + research gaps).
 
@@ -442,6 +455,7 @@ stages:
 
       {cards_context}'
   topic_init:
+    max_tokens: 8192
     system: You are a rigorous research planner.
     user: 'Create a SMART research goal in markdown.
 
@@ -456,6 +470,7 @@ stages:
       Required sections: Topic, Scope, SMART Goal, Constraints, Success Criteria, Generated.'
 sub_prompts:
   code_repair:
+    max_tokens: 16384
     system: You fix Python code validation errors while preserving functionality.
     user: 'The file `{fname}` in the experiment project has validation errors. Fix ALL issues and return ONLY the corrected
       file.
@@ -475,7 +490,7 @@ sub_prompts:
 
       Return ONLY the corrected code for `{fname}`.'
   iterative_improve:
-    max_tokens: 8192
+    max_tokens: 16384
     system: You improve experiment projects and return valid executable Python code. Use ```filename:xxx.py format for each
       file.
     user: 'Improve the experiment code based on prior run results.
@@ -496,6 +511,7 @@ sub_prompts:
 
       {run_summaries}'
   iterative_repair:
+    max_tokens: 16384
     system: You fix Python code issues — both static validation errors and runtime
       bugs (NaN, Inf, division by zero, overflow). Diagnose the ROOT CAUSE from
       warnings and error messages. Do not add unsafe behavior.

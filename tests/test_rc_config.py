@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from researchclaw.config import (
+    DockerSandboxConfig,
     ExperimentConfig,
     RCConfig,
     SandboxConfig,
@@ -224,6 +225,7 @@ def test_rcconfig_from_dict_happy_path(tmp_path: Path):
     assert config.project.name == "demo"
     assert config.research.domains == ("ml", "agents")
     assert config.llm.fallback_models == ("gpt-4o-mini", "gpt-4o")
+    assert config.llm.max_tokens == 4096
 
 
 def test_rcconfig_from_dict_parses_llm_wire_api(tmp_path: Path):
@@ -233,6 +235,43 @@ def test_rcconfig_from_dict_parses_llm_wire_api(tmp_path: Path):
     config = RCConfig.from_dict(data, project_root=tmp_path, check_paths=False)
 
     assert config.llm.wire_api == "responses"
+
+
+def test_rcconfig_from_dict_parses_llm_max_tokens(tmp_path: Path):
+    data = _valid_config_data()
+    data["llm"]["max_tokens"] = 65536
+
+    config = RCConfig.from_dict(data, project_root=tmp_path, check_paths=False)
+
+    assert config.llm.max_tokens == 65536
+
+
+def test_rcconfig_from_dict_parses_docker_env_config(tmp_path: Path):
+    data = _valid_config_data()
+    data["experiment"] = {
+        "mode": "docker",
+        "docker": {
+            "env": {
+                "MPLCONFIGDIR": "/tmp/mpl",
+                "RC_NUMERIC_FLAG": 1,
+                "BAD-NAME": "ignored",
+                "EMPTY_VALUE": None,
+            },
+            "env_from_host": ["HF_TOKEN", "CUDA_VISIBLE_DEVICES", "1BAD", "HF_TOKEN"],
+        },
+    }
+
+    config = RCConfig.from_dict(data, project_root=tmp_path, check_paths=False)
+
+    assert isinstance(config.experiment.docker, DockerSandboxConfig)
+    assert config.experiment.docker.env == (
+        ("MPLCONFIGDIR", "/tmp/mpl"),
+        ("RC_NUMERIC_FLAG", "1"),
+    )
+    assert config.experiment.docker.env_from_host == (
+        "HF_TOKEN",
+        "CUDA_VISIBLE_DEVICES",
+    )
 
 
 def test_rcconfig_from_dict_missing_fields_raises_value_error(tmp_path: Path):
