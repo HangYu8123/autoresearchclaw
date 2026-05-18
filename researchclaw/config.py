@@ -356,7 +356,7 @@ class CodeAgentConfig:
     # Phase 5: Multi-agent review dialog
     review_max_rounds: int = 2
     # Total Stage 10 CodeAgent wall-clock budget after OpenCode fallback.
-    wall_clock_budget_sec: int = 600
+    wall_clock_budget_sec: int = 1800
 
 
 @dataclass(frozen=True)
@@ -368,7 +368,7 @@ class OpenCodeConfig:
 
     enabled: bool = True
     auto: bool = True  # Auto-trigger without user confirmation
-    complexity_threshold: float = 0.2  # 0.0-1.0
+    complexity_threshold: float = 0.3  # 0.0-1.0
     model: str = ""  # Empty = use llm.primary_model
     timeout_sec: int = 600  # Max seconds for opencode run
     max_retries: int = 1
@@ -465,7 +465,7 @@ class CliAgentConfig:
 @dataclass(frozen=True)
 class ExperimentConfig:
     mode: str = "simulated"
-    time_budget_sec: int = 300
+    time_budget_sec: int = 600
     max_iterations: int = 10
     max_refine_duration_sec: int = 0  # 0 = auto (3× time_budget_sec)
     metric_key: str = "primary_metric"
@@ -1053,7 +1053,7 @@ def _parse_experiment_config(data: dict[str, Any]) -> ExperimentConfig:
     colab_data = data.get("colab_drive") or {}
     return ExperimentConfig(
         mode=data.get("mode", "simulated"),
-        time_budget_sec=_safe_int(data.get("time_budget_sec"), 300),
+        time_budget_sec=_safe_int(data.get("time_budget_sec"), 600),
         max_iterations=_safe_int(data.get("max_iterations"), 10),
         max_refine_duration_sec=_safe_int(data.get("max_refine_duration_sec"), 0),
         metric_key=data.get("metric_key", "primary_metric"),
@@ -1210,7 +1210,7 @@ def _parse_code_agent_config(data: dict[str, Any]) -> CodeAgentConfig:
             data.get("tree_search_eval_timeout_sec"), 120
         ),
         review_max_rounds=_safe_int(data.get("review_max_rounds"), 2),
-        wall_clock_budget_sec=_safe_int(data.get("wall_clock_budget_sec"), 600),
+        wall_clock_budget_sec=_safe_int(data.get("wall_clock_budget_sec"), 1800),
     )
 
 
@@ -1220,7 +1220,7 @@ def _parse_opencode_config(data: dict[str, Any]) -> OpenCodeConfig:
     return OpenCodeConfig(
         enabled=bool(data.get("enabled", True)),
         auto=bool(data.get("auto", True)),
-        complexity_threshold=_safe_float(data.get("complexity_threshold"), 0.2),
+        complexity_threshold=_safe_float(data.get("complexity_threshold"), 0.3),
         model=str(data.get("model", "")),
         timeout_sec=_safe_int(data.get("timeout_sec"), 600),
         max_retries=_safe_int(data.get("max_retries"), 1),

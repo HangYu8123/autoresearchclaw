@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+import researchclaw.llm.client as llm_client_module
 from researchclaw import health
 
 
@@ -114,6 +115,24 @@ def test_check_llm_connectivity_pass() -> None:
     with patch("urllib.request.urlopen", return_value=_DummyHTTPResponse(status=200)):
         result = health.check_llm_connectivity("https://api.example.com/v1")
     assert result.status == "pass"
+
+
+def test_check_llm_connectivity_uses_certifi_when_default_ca_bundle_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    cafile = tmp_path / "cacert.pem"
+    cafile.write_text("test cert bundle", encoding="utf-8")
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+    monkeypatch.setattr(llm_client_module, "_CERTIFI_SSL_CONFIGURED", False)
+    monkeypatch.setattr(llm_client_module, "_default_ssl_cafile_exists", lambda: False)
+    monkeypatch.setattr(llm_client_module, "_certifi_cafile", lambda: str(cafile))
+
+    with patch("urllib.request.urlopen", return_value=_DummyHTTPResponse(status=200)):
+        result = health.check_llm_connectivity("https://api.example.com/v1")
+
+    assert result.status == "pass"
+    assert llm_client_module.os.environ["SSL_CERT_FILE"] == str(cafile)
 
 
 def test_check_llm_connectivity_uses_get_probe() -> None:

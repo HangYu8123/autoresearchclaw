@@ -61,7 +61,7 @@ _DEFAULT_USER_AGENT = (
 )
 
 _MAX_BACKOFF_SEC = 300  # 5-minute ceiling for retry delays
-_READ_IDLE_TIMEOUT_SEC = 60.0
+_READ_IDLE_TIMEOUT_SEC = 120.0
 _CERTIFI_SSL_CONFIGURED = False
 
 
@@ -110,7 +110,9 @@ def _read_with_deadline(
     ----------
     idle_timeout_sec:
         Per-chunk socket idle timeout.  Defaults to ``_READ_IDLE_TIMEOUT_SEC``
-        (60 s).  Pass 90 s for reasoning models that may pause during CoT.
+        (120 s).  Reasoning models pass ``float(timeout_sec)`` so the full
+        wall-clock budget acts as the idle limit, preventing premature timeouts
+        when the server buffers the entire response during CoT thinking.
     """
 
     deadline = time.monotonic() + max(1, int(timeout_sec or 1))
@@ -191,7 +193,7 @@ class LLMConfig:
     temperature: float = 0.7
     max_retries: int = 3
     retry_base_delay: float = 2.0
-    timeout_sec: int = 300
+    timeout_sec: int = 600
     user_agent: str = _DEFAULT_USER_AGENT
     # MetaClaw bridge: extra headers for proxy requests
     extra_headers: dict[str, str] = field(default_factory=dict)
@@ -621,10 +623,15 @@ class LLMClient:
 
             req = urllib.request.Request(url, data=payload, headers=headers)
 
-            # P6: Model-adaptive idle timeout — reasoning models get 90 s
-            # to accommodate CoT thinking pauses; all others keep 60 s default.
+            # P6: Model-adaptive idle timeout — reasoning models receive the full
+            # wall-clock budget as their per-chunk idle limit.  Non-streaming
+            # DeepSeek/o-series servers may buffer the entire response during CoT
+            # (300–480 s of thinking) before sending any bytes; a shorter idle
+            # limit fires LLMReadTimeoutError prematurely and demotes the model.
+            # The overall deadline (timeout_sec) still guards against runaway
+            # requests.  Fast non-reasoning models keep the 120 s stall guard.
             _idle_timeout = (
-                90.0
+                float(self.config.timeout_sec)  # full budget; no premature per-chunk stall for reasoning models
                 if any(model.startswith(p) for p in _PREFLIGHT_TOKEN_HEADROOM_MODELS)
                 else _READ_IDLE_TIMEOUT_SEC
             )

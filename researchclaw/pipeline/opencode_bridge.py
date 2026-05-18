@@ -493,12 +493,58 @@ class OpenCodeBridge:
 
     # -- invocation ------------------------------------------------------------
 
+    @staticmethod
+    def _kill_process_tree(proc: subprocess.Popen) -> None:
+        """Kill a process and its entire process group / tree.
+
+        Uses ``os.killpg`` on POSIX (requires ``start_new_session=True`` when
+        spawning so the process gets its own pgid) and ``taskkill /F /T`` on
+        Windows so that any grandchild processes spawned by OpenCode are also
+        terminated.  Falls back to plain ``proc.kill()`` if either approach
+        fails.
+        """
+        try:
+            if os.name != "nt":
+                import signal as _signal  # noqa: PLC0415
+                try:
+                    os.killpg(os.getpgid(proc.pid), _signal.SIGKILL)
+                    return
+                except ProcessLookupError:
+                    return  # already gone
+                except Exception:  # noqa: BLE001
+                    pass  # fall through to proc.kill()
+            else:
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    return
+                except Exception:  # noqa: BLE001
+                    pass  # fall through to proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
+
     def _invoke_opencode(
         self,
         workspace: Path,
         prompt: str,
     ) -> tuple[bool, str, float]:
-        """Run ``opencode run`` in the workspace. Returns (success, log, elapsed)."""
+        """Run ``opencode run`` in the workspace. Returns (success, log, elapsed).
+
+        Uses ``Popen`` directly (instead of ``subprocess.run``) so that, on
+        timeout, we can kill the *entire process group* (OpenCode spawns child
+        processes that inherit stdout/stderr pipes; killing only the parent
+        leaves children running and makes the subsequent ``communicate()``
+        block indefinitely — causing >1000 s overruns despite a 600 s limit).
+        After the group kill we drain remaining pipe data with a short bounded
+        ``communicate(timeout=30)`` to avoid any residual deadlock.
+        """
         env = os.environ.copy()
         api_key_env = self._opencode_api_key_env_name()
         api_key = self._resolved_api_key()
@@ -511,32 +557,58 @@ class OpenCodeBridge:
         opencode_cmd = shutil.which("opencode") or "opencode"
         cmd = [opencode_cmd, "run", "-m", resolved_model, "--format", "json", prompt]
 
+        # Put OpenCode in its own session/process group so the whole tree
+        # can be killed atomically on timeout.
+        popen_kwargs: dict[str, Any] = {
+            "cwd": str(workspace),
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "env": env,
+        }
+        if os.name != "nt":
+            popen_kwargs["start_new_session"] = True
+        else:
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
         t0 = time.monotonic()
+        proc: subprocess.Popen | None = None
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=str(workspace),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=self._timeout_sec,
-                env=env,
-            )
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+            try:
+                stdout, stderr = proc.communicate(timeout=self._timeout_sec)
+            except subprocess.TimeoutExpired:
+                # Kill the entire process group so no orphan keeps pipes open.
+                self._kill_process_tree(proc)
+                # Drain with a bounded timeout to prevent any residual deadlock.
+                try:
+                    stdout, stderr = proc.communicate(timeout=30)
+                except subprocess.TimeoutExpired:
+                    stdout, stderr = "", ""
+                elapsed = time.monotonic() - t0
+                partial_out = (stdout or "")[:2000]
+                log = f"TIMEOUT after {elapsed:.1f}s"
+                if partial_out:
+                    log += f"\nstdout: {partial_out}"
+                return False, self._redact_sensitive(log), elapsed
+
             elapsed = time.monotonic() - t0
-            log = self._redact_sensitive(result.stdout + "\n" + result.stderr)
-            return result.returncode == 0, log, elapsed
-        except subprocess.TimeoutExpired as exc:
-            elapsed = time.monotonic() - t0
-            log = f"TIMEOUT after {elapsed:.1f}s"
-            if exc.stdout:
-                log += f"\nstdout: {exc.stdout[:2000] if isinstance(exc.stdout, str) else exc.stdout.decode(errors='replace')[:2000]}"
-            return False, self._redact_sensitive(log), elapsed
+            log = self._redact_sensitive((stdout or "") + "\n" + (stderr or ""))
+            return proc.returncode == 0, log, elapsed
         except FileNotFoundError:
             return False, "opencode CLI not found", 0.0
         except Exception as exc:  # noqa: BLE001
             elapsed = time.monotonic() - t0
             return False, self._redact_sensitive(f"Unexpected error: {exc}"), elapsed
+        finally:
+            # Ensure the process is reaped even if an unexpected exception occurs.
+            if proc is not None and proc.poll() is None:
+                try:
+                    self._kill_process_tree(proc)
+                except Exception:  # noqa: BLE001
+                    pass
 
     # -- file collection -------------------------------------------------------
 

@@ -496,13 +496,13 @@ def _execute_iterative_refine(
     max_iterations = max(1, min(requested_iterations, 10))
 
     # BUG-57: Wall-clock time cap for the entire refinement stage.
-    # Default: 3× the per-iteration time budget (e.g., 2400s → 7200s = 2h).
+    # Default: 3× the per-iteration time budget (e.g., 1200s → 3600s = 1h).
     import time as _time_bug57
     _refine_start_time = _time_bug57.monotonic()
-    _per_iter_budget = int(getattr(config.experiment, "time_budget_sec", 2400) or 2400)
+    _per_iter_budget = int(config.experiment.time_budget_sec or 600)
     _max_refine_wall_sec = int(
         getattr(config.experiment, "max_refine_duration_sec", 0) or 0
-    ) or int(_per_iter_budget * 1.5)
+    ) or int(_per_iter_budget * 3.0)
 
     # --- Collect baseline metrics from prior runs ---
     runs_dir_path: Path | None = None

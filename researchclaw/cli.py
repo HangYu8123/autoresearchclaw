@@ -892,7 +892,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     if shutil.which("docker"):
         print("  [OK] Docker is available (sandbox execution enabled)")
     else:
-        print("  [--] Docker not found (experiment sandbox unavailable)")
+        print("  [--] Docker not found (Docker sandbox unavailable)")
         print("       Install: https://docs.docker.com/get-docker/")
 
     # 3. LaTeX (informational)

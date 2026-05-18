@@ -76,7 +76,9 @@ class CodeAgentConfig:
     review_max_rounds: int = 2
 
     # Total wall-clock budget for the whole CodeAgent run.
-    wall_clock_budget_sec: int = 600
+    # 1800 s gives ~3 LLM calls at the default 240 s read-deadline before
+    # the budget is exhausted (Blueprint + Generation + Exec-fix iterations).
+    wall_clock_budget_sec: int = 1800
 
 
 # ---------------------------------------------------------------------------

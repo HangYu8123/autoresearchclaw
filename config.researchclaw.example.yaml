@@ -128,7 +128,7 @@ experiment:
   opencode:
     enabled: true                # Master switch (default: true)
     auto: true                   # Auto-trigger without confirmation (default: true)
-    complexity_threshold: 0.2    # 0.0-1.0 — higher = only trigger on complex experiments
+    complexity_threshold: 0.3    # 0.0-1.0 — higher = only trigger on complex experiments
     model: ""                    # Override model (empty = use llm.primary_model)
     timeout_sec: 600             # Max seconds for OpenCode generation
     max_retries: 1               # Retry count on failure

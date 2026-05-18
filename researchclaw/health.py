@@ -19,6 +19,7 @@ from typing import ContextManager, cast
 import yaml
 
 from researchclaw.config import RCConfig, validate_config
+from researchclaw.llm.client import _ensure_ssl_cert_file
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,8 @@ def _is_timeout(exc: BaseException) -> bool:
 
 
 def check_llm_connectivity(base_url: str, api_key: str = "") -> CheckResult:
+    _ensure_ssl_cert_file()
+
     if not base_url.strip():
         return CheckResult(
             name="llm_connectivity",
@@ -275,6 +278,7 @@ def _read_response_bytes(response: object) -> bytes:
 
 
 def _urlopen(req: str | urllib.request.Request, timeout: int) -> ContextManager[object]:
+    _ensure_ssl_cert_file()
     return cast(ContextManager[object], urllib.request.urlopen(req, timeout=timeout))
 
 

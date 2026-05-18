@@ -510,7 +510,12 @@ class CodeGenAgent(BaseAgent):
         if self._use_docker:
             output_path = f"/workspace/output/{figure_id}.png"
         else:
-            output_path = str((Path(output_dir) / f"{figure_id}.png").resolve())
+            # BUG-WIN: .resolve() on Windows returns backslash paths (e.g.
+            # C:\Users\Hang Yu\...) which become invalid Unicode escapes when
+            # embedded in the generated Python script literal.  .as_posix()
+            # always produces forward-slash paths that matplotlib accepts on
+            # all platforms.
+            output_path = (Path(output_dir) / f"{figure_id}.png").resolve().as_posix()
         title = fig_spec.get("title", "")
         x_label = fig_spec.get("x_label", "")
         y_label = fig_spec.get("y_label", "")
