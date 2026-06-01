@@ -426,7 +426,7 @@ class ExperimentSandbox:
                 dest = sandbox_project / src_file.name
                 # Do not allow project to overwrite the harness
                 if dest.name == "experiment_harness.py":
-                    logger.warning("Project contains experiment_harness.py — skipping (immutable)")
+                    logger.info("Project contains experiment_harness.py — skipping (immutable)")
                     continue
                 dest.write_bytes(src_file.read_bytes())
             elif src_file.is_dir() and not src_file.name.startswith("."):

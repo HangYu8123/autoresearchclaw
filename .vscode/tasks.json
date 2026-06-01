@@ -1,0 +1,2412 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "pytest-warning-fixes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_rc_executor.py::TestMultiPerspectiveGenerate::test_min_successes_stops_after_target tests\\test_rc_executor.py::TestMultiPerspectiveGenerate::test_caps_debate_max_tokens tests\\test_rc_executor.py::TestHypothesisGenDebate::test_hypothesis_gen_with_llm_creates_perspectives tests\\test_opencode_bridge.py::TestOpenCodeBridge::test_generate_does_not_retry_after_timeout tests\\test_code_agent.py::TestCodeAgentConfig::test_chat_caps_large_token_budget tests\\test_rc_validator.py::test_filename_collision_detects_config_py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "validate-config-arc",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m researchclaw validate --config config.arc.yaml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ErrorActionPreference = 'Stop'; $topic = @'\nA VLA use language prompt as memory to compress image input. The key idea is: use keyframes + language prompts to reduce image input length and augment key information, such as number, object type, and other constraints. so the VLAinput would be: images -> keyframe images + language prompts + keyframes + language prompts + keyframes. For instance, originally it needed 50 images as input, now it only uses 10, 4 in the beginning, 4 in the end, and 2 in the middle. The reduced parts are compressed using corresponding language prompts\n'@; $env:RC_TOPIC = $topic; $hash = (& .\\.venv\\Scripts\\python.exe -c \"import hashlib, os; print(hashlib.sha256(os.environ['RC_TOPIC'].encode()).hexdigest()[:6])\").Trim(); $out = \"artifacts\\rc-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$hash\"; New-Item -ItemType Directory -Force -Path $out | Out-Null; $stages = 'TOPIC_INIT,PROBLEM_DECOMPOSE,SEARCH_STRATEGY,LITERATURE_COLLECT,LITERATURE_SCREEN,KNOWLEDGE_EXTRACT,SYNTHESIS,HYPOTHESIS_GEN,EXPERIMENT_DESIGN,CODE_GENERATION,RESOURCE_PLANNING,EXPERIMENT_RUN,ITERATIVE_REFINE,RESULT_ANALYSIS,RESEARCH_DECISION,PAPER_OUTLINE,PAPER_DRAFT,PEER_REVIEW,PAPER_REVISION,QUALITY_GATE,KNOWLEDGE_ARCHIVE,EXPORT_PUBLISH,CITATION_VERIFY'.Split(','); $warnRegex = '(?im)(Traceback|\\bERROR\\b|\\bFAILED\\b|\\bWARNING\\b|Warning:|Error:|degraded\\s*[:=]\\s*true|decision[\"'']?\\s*[:=]\\s*[\"'']degraded)'; Write-Host \"RUN_DIR:$out\"; for ($idx = 0; $idx -lt $stages.Count; $idx++) { $stage = $stages[$idx]; Write-Host \"===== STAGE $($idx + 1) $stage =====\"; $argsList = @('-m','researchclaw','run','--config','config.arc.yaml','--topic',$topic,'--output',$out,'--from-stage',$stage,'--to-stage',$stage,'--auto-approve'); if ($idx -gt 0) { $argsList += '--skip-preflight' }; $stageOutput = & .\\.venv\\Scripts\\python.exe @argsList 2>&1; $exitCode = $LASTEXITCODE; $text = ($stageOutput | Out-String); $stageOutput | ForEach-Object { Write-Host $_ }; $logPath = Join-Path $out (\"stage-{0:D2}-terminal.log\" -f ($idx + 1)); $text | Set-Content -Path $logPath -Encoding UTF8; if ($exitCode -ne 0) { Write-Host \"STOP_STAGE:$stage\"; Write-Host \"STOP_REASON:exit_$exitCode\"; exit $exitCode }; if ($text -match $warnRegex) { Write-Host \"STOP_STAGE:$stage\"; Write-Host \"STOP_REASON:terminal_warning_or_error_marker\"; exit 4 } }; Write-Host \"ALL_STAGES_COMPLETED:$out\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-file",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-02",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-02b",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-03",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"2"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-stop-stage10-pid",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$p = 30544; if (Get-Process -Id $p -ErrorAction SilentlyContinue) { Stop-Process -Id $p -Force; Write-Host \"STOPPED:$p\" } else { Write-Host \"NOT_RUNNING:$p\" }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "opencode-run-help",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$cmd=(Get-Command opencode.cmd -ErrorAction SilentlyContinue).Source; if (-not $cmd) { $cmd=(Get-Command opencode -ErrorAction Stop | Where-Object { $_.CommandType -eq 'Application' } | Select-Object -First 1).Source }; & $cmd run --help"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "opencode-run-help-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$cmd=(Get-Command opencode.cmd -ErrorAction Stop).Source; & $cmd run --help"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "opencode-bridge-probe",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"artifacts\\run_logs\\opencode_probe_20260530.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "opencode-bridge-probe-after-patch",
+			"type": "shell",
+			"command": ".\\.venv\\Scripts\\python.exe",
+			"args": [
+				"artifacts\\run_logs\\opencode_probe_20260530.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-10",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"9"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-process-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*researchclaw*' -or $_.CommandLine -like '*opencode*' } | Select-Object ProcessId,CommandLine | Format-Table -Wrap -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-process-check-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like \"*researchclaw*\" -or $_.CommandLine -like \"*opencode*\" } | Select-Object ProcessId,CommandLine | Format-Table -Wrap -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-process-check-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist /v | findstr /I \"python opencode\""
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "python-process-check-cmd",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist /v | findstr /I python"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "python-commandline-check",
+			"type": "shell",
+			"command": "wmic",
+			"args": [
+				"process",
+				"where",
+				"name='python.exe'",
+				"get",
+				"ProcessId,CommandLine"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "python-commandline-check-2",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"wmic process where \"name='python.exe'\" get ProcessId,CommandLine"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-process-check-now",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-stage10-current",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 3144; Write-Host STAGE10_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-process-check-inline",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'researchclaw run|opencode|researchclaw_vla_stage_loop' } | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-process-check-inline-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match \\\"researchclaw run|opencode|researchclaw_vla_stage_loop\\\" } | Select-Object ProcessId,ParentProcessId,Name,CreationDate,CommandLine | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-process-check-script-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-opencode-cpu-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 8708,3144,13292 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-opencode-focused-after-salvage",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_opencode_bridge.py::TestOpenCodeBridge::test_generate_does_not_retry_after_timeout tests\\test_opencode_bridge.py::TestOpenCodeBridge::test_generate_success"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-prepatch-stage10",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 3144,13292,31292,8708 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage10-prepatch",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-10 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-10-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-10-salvage",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"9"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-process-check-salvage-run",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-stage10-salvage-run",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 31240; Write-Host STAGE10_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stage10-success",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage10-python-cpu-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 31240,30828 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage10-postcheck",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 12976,5468,31240,30828 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stop-postcheck",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-orphan-stage11",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 30520,27808 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage11-stopped",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-validator-precision",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_rc_executor.py::TestExperimentValidatorPrecision"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage10-11-warning-rerun",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-10, artifacts\\rc-20260530-203953-6f0af9\\stage-11 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-10-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-11-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-10-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"9"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-rerun-stage10-clean-process",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*--from-stage CODE_GENERATION*' } | Select-Object -First 1 -ExpandProperty ProcessId; if ($p) { Wait-Process -Id $p; Write-Host STAGE10_PROCESS_EXITED } else { Write-Host NO_STAGE10_PROCESS_FOUND }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun-stage10-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-rerun-stage10-clean-direct",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 16900; Write-Host STAGE10_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 524; Write-Host STAGE13_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage13-cpu-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 524,6048 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage13-sandbox-files-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-13 -Recurse -File | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 20 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage13-current-process-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage13-cpu-check-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 524,6048 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage14-after-stage13-warning",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 28396,23812 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-sandbox-stage13-warning-fixes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_rc_executor.py::TestExperimentValidatorPrecision tests\\test_opencode_bridge.py::TestOpenCodeBridge::test_generate_success"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage12-14-warning-rerun",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-12, artifacts\\rc-20260530-203953-6f0af9\\stage-13, artifacts\\rc-20260530-203953-6f0af9\\stage-14 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-12-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-13-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-12-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"11"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun12-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-rerun12-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 31112; Write-Host STAGE13_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage13-rerun12-file-times",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-13 -Recurse -File | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 10 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-rerun-stage13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "wait-stage14",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Wait-Process -Id 24348; Write-Host STAGE14_PROCESS_EXITED"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-cpu-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 24348,30692 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage16-before-stop",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage16-after-stage14-errors",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 29984,31448,17856,1848 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "validate-config-after-figure-disable",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m researchclaw validate --config config.arc.yaml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "validate-config-after-figure-disable-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m researchclaw validate --config config.arc.yaml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "validate-config-after-figure-disable-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m researchclaw validate --config config.arc.yaml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "show-config-indent-figure",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$i=1; Get-Content config.arc.yaml | ForEach-Object { if($i -ge 212 -and $i -le 229){ $lead=($_.Length - $_.TrimStart().Length); Write-Host ($i.ToString()+':'+$lead+':'+$_) }; $i++ }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "validate-config-after-figure-disable-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m researchclaw validate --config config.arc.yaml"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stop-stage16",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage14-16-warning-rerun",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14, artifacts\\rc-20260530-203953-6f0af9\\stage-15, artifacts\\rc-20260530-203953-6f0af9\\stage-16 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-15-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-16-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-14-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"13"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun14",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage10.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun14-b",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-python-cpu",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 29720,16260 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,StartTime,Responding,Path | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 12 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-dirty-stage14-run",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 26628,16628,29720,16260 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage14-dirty-only",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-14-clean-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"13"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun14-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 12 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 14 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 18 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-python-cpu-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 8400,31464 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,StartTime,Responding,Path | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-5",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 20 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-6",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 24 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage14-review-warnings",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 148,31288,8400,31464 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stage14-stop",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-dirty-stage15-after-review-warnings",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 32148,31040 -Force -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'researchclaw_vla_stage_loop_20260530' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-dirty-stage15-pids",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 32148,31040 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-after-stage15-stop",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-figure-agent-focused-after-critic-style",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_figure_agent.py::TestStyleConfig tests\\test_figure_agent.py::TestCodeGenAgent tests\\test_figure_agent.py::TestCriticAgent"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage14-15-after-style-fix",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14, artifacts\\rc-20260530-203953-6f0af9\\stage-15 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log, artifacts\\rc-20260530-203953-6f0af9\\stage-15-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-14-clean-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"13"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-7",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 16 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-8",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 20 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-9",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 24 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun14-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-python-cpu-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 6048,30068 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,StartTime,Responding,Path | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-10",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 24 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-11",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 28 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-12",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 30 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 32 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage14-for-deterministic-codegen",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 30328,30148,6048,30068 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-codegen-critic-after-deterministic-fallbacks",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_figure_agent.py::TestCodeGenAgent tests\\test_figure_agent.py::TestCriticAgent"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-before-rerun14-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage14-after-deterministic-codegen",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-14-clean-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"13"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-14",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 30 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-15",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 36 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-16",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 36 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-rerun14-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-python-cpu-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 18580,5468 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,StartTime,Responding,Path | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-17",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 36 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-18",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 40 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-19",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 40 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-20",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 46 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-21",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 50 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-22",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 54 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-23",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 56 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage14-for-deterministic-critic",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 10924,12668,18580,5468 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "pytest-figure-agent-after-deterministic-critic",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				".\\.venv\\Scripts\\python.exe -m pytest tests\\test_figure_agent.py::TestCodeGenAgent tests\\test_figure_agent.py::TestCriticAgent"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-before-rerun14-5",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage14-after-deterministic-critic",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-14-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-rerun-14-clean-5",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"13"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-24",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 50 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-25",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-26",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-27",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-28",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-29",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 80 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-30",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 80 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-31",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 90 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-32",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 90 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-33",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 100 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-34",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 110 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage14-files-times-35",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-14 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 120 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage14-for-deterministic-planner",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*--from-stage RESULT_ANALYSIS*' -or $_.CommandLine -like '*researchclaw_vla_stage_loop_20260530.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage14-before-stop-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stop-stage15-after-stage14-finished",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 23736,27172,28616,29908 -Force -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "clear-stage15-after-stage14-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Remove-Item -Recurse -Force artifacts\\rc-20260530-203953-6f0af9\\stage-15 -ErrorAction SilentlyContinue; Remove-Item -Force artifacts\\rc-20260530-203953-6f0af9\\stage-15-terminal.log -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-stage-loop-resume-15",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"14"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 30 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 40 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage17",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 50 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 50 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-5",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 60 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-python-cpu",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process -Id 32268,31512 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU,StartTime,Responding,Path | Format-List"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-6",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 70 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-time-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Date -Format 'HH:mm:ss'"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-7",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 70 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-8",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 70 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-9",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 80 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-time-check-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Date -Format 'HH:mm:ss'"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-10",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 80 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-11",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 80 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-12",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 90 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-13",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 90 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-time-check-3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Date -Format 'HH:mm:ss'"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-14",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 100 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-15",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 100 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "process-check-stage17-2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\process_check_stage14.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-files-times-16",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-ChildItem artifacts\\rc-20260530-203953-6f0af9\\stage-17 -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length,LastWriteTime | Sort-Object LastWriteTime -Descending | Select-Object -First 100 | Format-Table -AutoSize"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "stage17-18-marker-scan",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$warnRegex='(?m)(Traceback|\\bERROR\\b|\\bFAILED\\b|\\bWARNING\\b|Warning:|Error:|Stage\\s+\\d+\\s+(?:deep|code)\\s+quality:|[Dd]egraded\\s*[:=]\\s*true|decision[\"'']?\\s*[:=]\\s*[\"'']degraded)'; foreach($n in 17,18){ $p=\"artifacts\\rc-20260530-203953-6f0af9\\stage-$('{0:D2}' -f $n)-terminal.log\"; if(Test-Path $p){ $t=Get-Content $p -Raw; if($t -cmatch $warnRegex){ Write-Host \"DIRTY:$p\" } else { Write-Host \"CLEAN:$p\" } } else { Write-Host \"MISSING:$p\" } }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-rerun-stage13-onward",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"12"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-rerun-stage12-onward",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"11"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-rerun-stage12-after-generated-fix",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"11"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-rerun-stage12-after-contiguous-fix",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"11"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "researchclaw-vla-rerun-stage12-after-loop-fix",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"artifacts\\run_logs\\researchclaw_vla_stage_loop_20260530.ps1",
+				"-Output",
+				"artifacts\\rc-20260530-203953-6f0af9",
+				"-StartIndex",
+				"11"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

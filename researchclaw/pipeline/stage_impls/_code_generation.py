@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,125 @@ from researchclaw.pipeline.stages import Stage, StageStatus
 from researchclaw.prompts import PromptManager
 
 logger = logging.getLogger(__name__)
+
+_MIN_STAGE10_CODE_TOKENS = 8192
+_TOPIC_FALLBACK_MODES = {"simulated", "sandbox"}
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return None
+    return result if result > 0 else None
+
+
+def _stage10_generation_max_tokens(
+    config: Any,
+    prompts: PromptManager | None,
+) -> int:
+    """Resolve the Stage 10 code-generation output token budget."""
+    prompt_tokens = None
+    if prompts is not None:
+        try:
+            prompt_tokens = _positive_int(prompts.max_tokens("code_generation"))
+        except Exception:  # noqa: BLE001
+            prompt_tokens = None
+
+    llm_tokens = _positive_int(getattr(getattr(config, "llm", None), "max_tokens", None))
+    if prompt_tokens and llm_tokens:
+        selected = min(prompt_tokens, max(llm_tokens, _MIN_STAGE10_CODE_TOKENS))
+    else:
+        selected = prompt_tokens or llm_tokens or _MIN_STAGE10_CODE_TOKENS
+    return max(selected, _MIN_STAGE10_CODE_TOKENS)
+
+
+def _topic_fallback_allowed(config: Any) -> bool:
+    mode = str(getattr(getattr(config, "experiment", None), "mode", "simulated"))
+    return mode in _TOPIC_FALLBACK_MODES
+
+
+def _normalize_shadow_config(files: dict[str, str]) -> dict[str, str]:
+    if "config.py" not in files:
+        return files
+    cleaned = dict(files)
+    if "experiment_config.py" not in cleaned:
+        cleaned["experiment_config.py"] = cleaned["config.py"]
+    cleaned.pop("config.py", None)
+    for fname, code in list(cleaned.items()):
+        if not fname.endswith(".py"):
+            continue
+        code = re.sub(
+            r"(^|\n)(\s*)from\s+config\s+import\s+",
+            r"\1\2from experiment_config import ",
+            code,
+        )
+        code = re.sub(
+            r"(^|\n)(\s*)import\s+config\b",
+            r"\1\2import experiment_config as config",
+            code,
+        )
+        cleaned[fname] = code
+    return cleaned
+
+
+def _main_py_generation_issue(files: dict[str, str]) -> str | None:
+    if not files:
+        return "No experiment files were generated."
+    main_code = files.get("main.py")
+    if not isinstance(main_code, str) or not main_code.strip():
+        return "Generated files do not include a non-empty main.py entry point."
+
+    try:
+        tree = ast.parse(main_code)
+    except SyntaxError:
+        return None
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if not isinstance(test, ast.Compare):
+            continue
+        if not isinstance(test.left, ast.Name) or test.left.id != "__name__":
+            continue
+        if len(test.ops) != 1 or not isinstance(test.ops[0], ast.Eq):
+            continue
+        if len(test.comparators) != 1:
+            continue
+        comp = test.comparators[0]
+        has_body = any(not isinstance(stmt, ast.Pass) for stmt in node.body)
+        if isinstance(comp, ast.Constant) and comp.value == "__main__" and has_body:
+            return None
+
+    return 'Generated main.py has no `if __name__ == "__main__":` entry point.'
+
+
+def _write_generation_diagnostics(
+    stage_dir: Path,
+    config: Any,
+    *,
+    status: str,
+    issue: str,
+    code_max_tokens: int,
+    generation_errors: list[dict[str, str]],
+    files: dict[str, str],
+    fallback_allowed: bool,
+) -> None:
+    mode = str(getattr(getattr(config, "experiment", None), "mode", "unknown"))
+    payload = {
+        "status": status,
+        "mode": mode,
+        "fallback_allowed": fallback_allowed,
+        "selected_max_tokens": code_max_tokens,
+        "issue": issue,
+        "generated_files": sorted(files.keys()),
+        "errors": generation_errors,
+        "timestamp": _utcnow_iso(),
+    }
+    (stage_dir / "code_generation_diagnostics.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
 
 # Improvement G: Continuous-action environments that are incompatible with DQN
 _CONTINUOUS_ENVS = {
@@ -484,10 +605,16 @@ def _execute_code_generation(
     # --- Code generation: Beast Mode → CodeAgent → Legacy single-shot ---
     _code_agent_active = False
     _beast_mode_used = False
-    _code_max_tokens = 8192
+    _code_max_tokens = _stage10_generation_max_tokens(config, _pm)
+    _generation_errors: list[dict[str, str]] = []
 
     # ── Beast Mode: OpenCode external agent (optional) ─────────────────
     _oc_cfg = config.experiment.opencode
+    _interrupted_opencode_workspaces = list(stage_dir.glob("opencode_beast_*"))
+    if _oc_cfg.enabled and not (stage_dir / "beast_mode_log.json").exists():
+        for _workspace in _interrupted_opencode_workspaces:
+            shutil.rmtree(_workspace, ignore_errors=True)
+
     if _oc_cfg.enabled:
         from researchclaw.pipeline.opencode_bridge import (
             OpenCodeBridge,
@@ -579,6 +706,7 @@ def _execute_code_generation(
                             "elapsed_sec": _oc_result.elapsed_sec,
                             "files": list(_oc_result.files.keys()),
                             "error": _oc_result.error,
+                            "opencode_log_tail": _oc_result.opencode_log[-4000:],
                             "complexity_score": _cplx.score,
                             "model": _oc_model,
                         },
@@ -597,9 +725,52 @@ def _execute_code_generation(
                         _oc_result.elapsed_sec,
                     )
                 else:
-                    logger.warning(
-                        "Beast mode: FAILED (%s) — falling back to CodeAgent",
-                        _oc_result.error or "unknown error",
+                    _opencode_error = (
+                        _oc_result.error or "OpenCode returned no files"
+                    )
+                    _generation_errors.append({
+                        "source": "opencode",
+                        "error": _opencode_error,
+                    })
+                    detail = (
+                        "Stage 10 Beast Mode failed after OpenCode was required: "
+                        f"{_opencode_error}"
+                    )
+                    _write_generation_diagnostics(
+                        stage_dir,
+                        config,
+                        status="failed",
+                        issue=detail,
+                        code_max_tokens=_code_max_tokens,
+                        generation_errors=_generation_errors,
+                        files=_oc_result.files,
+                        fallback_allowed=False,
+                    )
+                    (stage_dir / "validation_report.md").write_text(
+                        "# Code Generation Failure\n\n"
+                        "**Status**: FAILED\n\n"
+                        f"{detail}\n\n"
+                        "OpenCode is required for this Beast Mode stage; "
+                        "CodeAgent fallback was not used.\n\n"
+                        "See `beast_mode_log.json` and "
+                        "`code_generation_diagnostics.json` for details.\n",
+                        encoding="utf-8",
+                    )
+                    logger.error(detail)
+                    return StageResult(
+                        stage=Stage.CODE_GENERATION,
+                        status=StageStatus.FAILED,
+                        artifacts=(
+                            "beast_mode_log.json",
+                            "code_generation_diagnostics.json",
+                            "validation_report.md",
+                        ),
+                        evidence_refs=(
+                            "stage-10/beast_mode_log.json",
+                            "stage-10/code_generation_diagnostics.json",
+                            "stage-10/validation_report.md",
+                        ),
+                        error=detail,
                     )
         else:
             logger.info(
@@ -632,7 +803,7 @@ def _execute_code_generation(
             config.llm.primary_model.startswith(p)
             for p in ("gpt-5", "o3", "o4")
         ):
-            _code_max_tokens = 16384
+            _code_max_tokens = max(_code_max_tokens, 16384)
 
         # ── Domain detection + Code Search for non-ML domains ──────────
         _domain_profile = None
@@ -689,15 +860,23 @@ def _execute_code_generation(
                 max_tokens=_code_max_tokens,
             )
         except Exception as exc:  # noqa: BLE001
+            _generation_errors.append({
+                "source": "code_agent",
+                "error": str(exc),
+            })
             logger.warning(
-                "CodeAgent failed; using topic-aligned fallback experiment: %s",
+                "CodeAgent failed to generate experiment files: %s",
                 exc,
                 exc_info=True,
             )
             _code_agent_active = True
             (stage_dir / "code_agent_log.json").write_text(
                 json.dumps(
-                    {"error": str(exc), "fallback": "topic_aligned"},
+                    {
+                        "error": str(exc),
+                        "fallback": "none",
+                        "status": "failed",
+                    },
                     indent=2,
                 ),
                 encoding="utf-8",
@@ -705,6 +884,11 @@ def _execute_code_generation(
         else:
             files = _agent_result.files
             _code_agent_active = True
+            if not files:
+                _generation_errors.append({
+                    "source": "code_agent",
+                    "error": "CodeAgent returned no files",
+                })
 
             # Write agent artifacts
             (stage_dir / "code_agent_log.json").write_text(
@@ -751,7 +935,10 @@ def _execute_code_generation(
         )
         # R13-3: Use higher max_tokens for reasoning models (they consume tokens
         # for internal chain-of-thought). Retry once with even higher limit on empty.
-        _code_max_tokens = sp.max_tokens or 8192
+        _code_max_tokens = max(
+            _code_max_tokens,
+            _positive_int(sp.max_tokens) or _MIN_STAGE10_CODE_TOKENS,
+        )
         if any(config.llm.primary_model.startswith(p) for p in ("gpt-5", "o3", "o4")):
             _code_max_tokens = max(_code_max_tokens, 16384)
 
@@ -777,10 +964,14 @@ def _execute_code_generation(
                 sp.system,
                 sp.user,
                 json_mode=sp.json_mode,
-                max_tokens=32768,
+                max_tokens=max(_code_max_tokens, 32768),
             )
             files = _extract_multi_file_blocks(resp.content)
         if not files:
+            _generation_errors.append({
+                "source": "legacy_llm",
+                "error": "Legacy code_generation produced no extractable files",
+            })
             logger.warning(
                 "R13-2: _extract_multi_file_blocks returned empty. "
                 "LLM response length=%d, first 300 chars: %s",
@@ -789,8 +980,49 @@ def _execute_code_generation(
             )
 
     # --- Fallback: topic-aligned lightweight VLA/keyframe experiment ---
-    if not files:
+    generation_issue = _main_py_generation_issue(files)
+    fallback_allowed = _topic_fallback_allowed(config)
+    if generation_issue and fallback_allowed:
+        _write_generation_diagnostics(
+            stage_dir,
+            config,
+            status="fallback",
+            issue=generation_issue,
+            code_max_tokens=_code_max_tokens,
+            generation_errors=_generation_errors,
+            files=files,
+            fallback_allowed=True,
+        )
         files = {"main.py": _topic_aligned_fallback_code(metric, topic=config.research.topic)}
+    elif generation_issue:
+        detail = f"Stage 10 code generation failed: {generation_issue}"
+        _write_generation_diagnostics(
+            stage_dir,
+            config,
+            status="failed",
+            issue=generation_issue,
+            code_max_tokens=_code_max_tokens,
+            generation_errors=_generation_errors,
+            files=files,
+            fallback_allowed=False,
+        )
+        (stage_dir / "validation_report.md").write_text(
+            "# Code Generation Failure\n\n"
+            f"**Status**: FAILED\n\n{detail}\n\n"
+            "See `code_generation_diagnostics.json` for generation route details.\n",
+            encoding="utf-8",
+        )
+        logger.error(detail)
+        return StageResult(
+            stage=Stage.CODE_GENERATION,
+            status=StageStatus.FAILED,
+            artifacts=("code_generation_diagnostics.json", "validation_report.md"),
+            evidence_refs=(
+                "stage-10/code_generation_diagnostics.json",
+                "stage-10/validation_report.md",
+            ),
+            error=detail,
+        )
 
     # --- Validate each file + auto-repair loop ---
     all_valid = True
@@ -829,7 +1061,12 @@ def _execute_code_generation(
                 issues_text=issues_text,
                 all_files_ctx=all_files_ctx,
             )
-            resp = _chat_with_prompt(llm, rp.system, rp.user)
+            resp = _chat_with_prompt(
+                llm,
+                rp.system,
+                rp.user,
+                max_tokens=rp.max_tokens or _code_max_tokens,
+            )
             _repaired = _extract_code_block(resp.content)
             if _repaired.strip():
                 files[fname] = _repaired
@@ -917,26 +1154,32 @@ def _execute_code_generation(
                     fname, _m,
                 )
 
+    files = _normalize_shadow_config(files)
+
     # --- Write experiment directory ---
     exp_dir = stage_dir / "experiment"
+    if exp_dir.exists():
+        shutil.rmtree(exp_dir, ignore_errors=True)
     exp_dir.mkdir(parents=True, exist_ok=True)
     for fname, code in files.items():
         (exp_dir / fname).write_text(code, encoding="utf-8")
 
     # --- Write validation report ---
-    if validation_log or not all_valid:
-        report_lines = ["# Code Validation Report\n"]
-        if all_valid:
-            report_lines.append(f"**Status**: PASSED after {attempt} total repair(s)\n")
-        else:
-            report_lines.append(
-                f"**Status**: FAILED after {attempt} total repair attempt(s)\n"
-            )
+    report_lines = ["# Code Validation Report\n"]
+    if all_valid:
+        report_lines.append(f"**Status**: PASSED after {attempt} total repair(s)\n")
+    else:
+        report_lines.append(
+            f"**Status**: FAILED after {attempt} total repair attempt(s)\n"
+        )
+    if validation_log:
         for entry in validation_log:
             report_lines.append(f"- {entry}")
-        (stage_dir / "validation_report.md").write_text(
-            "\n".join(report_lines), encoding="utf-8"
-        )
+    else:
+        report_lines.append("- No syntax/security validation issues found.")
+    (stage_dir / "validation_report.md").write_text(
+        "\n".join(report_lines), encoding="utf-8"
+    )
 
     # --- R10-Fix6: Code complexity and quality check ---
     from researchclaw.experiment.validator import (
@@ -964,8 +1207,11 @@ def _execute_code_generation(
         )
 
     complexity_warnings: list[str] = []
+    py_file_count = sum(1 for fname in files if fname.endswith(".py"))
     for fname, code in files.items():
         if fname.endswith(".py"):
+            if fname == "main.py" and py_file_count > 1:
+                continue
             cw = check_code_complexity(code)
             for w in cw:
                 complexity_warnings.append(f"[{fname}] {w}")
@@ -1492,6 +1738,8 @@ Multi-file experiment project with {len(files)} file(s): {file_list}
     (stage_dir / "experiment_spec.md").write_text(spec, encoding="utf-8")
 
     artifacts = ["experiment/", "experiment_spec.md"]
+    if (stage_dir / "code_generation_diagnostics.json").exists():
+        artifacts.append("code_generation_diagnostics.json")
     if (stage_dir / "validation_report.md").exists():
         artifacts.append("validation_report.md")
 

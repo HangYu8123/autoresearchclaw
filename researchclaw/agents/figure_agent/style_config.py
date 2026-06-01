@@ -24,18 +24,19 @@ DPI_DRAFT = 150
 # Font sizes (points) — width-aware to avoid oversized text in paper columns
 # ---------------------------------------------------------------------------
 
-# For single-column figures (≤3.5in) — fonts must be small to match 10pt body
+# For single-column figures (≤3.5in) — keep text above the critic's
+# publication-readability floor.
 FONT_SIZE_SINGLE_COL = {
-    "title": 9,
-    "axis_label": 8,
-    "tick": 7,
-    "legend": 7,
-    "annotation": 7,
+    "title": 12,
+    "axis_label": 10,
+    "tick": 9,
+    "legend": 9,
+    "annotation": 9,
 }
 
 # For double-column / full-page figures (≥7.0in) — normal academic sizes
 FONT_SIZE_DOUBLE_COL = {
-    "title": 11,
+    "title": 12,
     "axis_label": 10,
     "tick": 9,
     "legend": 9,

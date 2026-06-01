@@ -41,6 +41,24 @@ from researchclaw.prompts import PromptManager
 logger = logging.getLogger(__name__)
 
 
+def _runtime_issue_text_is_fatal(issue_text: str) -> bool:
+    """Return True for runtime issues that invalidate captured metrics."""
+    if not issue_text:
+        return False
+    return any(
+        marker in issue_text
+        for marker in (
+            "Runtime warnings/errors",
+            "Traceback",
+            "Exception",
+            "METRIC NaN",
+            "METRIC Inf",
+            "NaN values detected",
+            "FAIL:",
+        )
+    )
+
+
 def _execute_resource_planning(
     stage_dir: Path,
     run_dir: Path,
@@ -183,16 +201,20 @@ def _execute_experiment_run(
             effective_metrics = _parse_metrics_from_stdout(result.stdout)
 
         # Determine run status: completed / partial (timed out with data) / failed
-        # R6-2: Detect stdout failure signals even when exit code is 0
+        # R6-2: Detect failure signals even when metrics were printed before a crash.
+        _failure_signals = ("FAIL:", "NaN/divergence", "Traceback (most recent")
         _stdout_has_failure = bool(
-            result.stdout
-            and not effective_metrics
-            and any(
-                sig in result.stdout
-                for sig in ("FAIL:", "NaN/divergence", "Traceback (most recent")
-            )
+            result.stdout and any(sig in result.stdout for sig in _failure_signals)
         )
-        if result.returncode == 0 and not result.timed_out and not _stdout_has_failure:
+        _stderr_has_failure = bool(
+            result.stderr and any(sig in result.stderr for sig in _failure_signals)
+        )
+        if (
+            result.returncode == 0
+            and not result.timed_out
+            and not _stdout_has_failure
+            and not _stderr_has_failure
+        ):
             run_status = "completed"
         elif result.timed_out and effective_metrics:
             run_status = "partial"
@@ -202,9 +224,9 @@ def _execute_experiment_run(
             )
         else:
             run_status = "failed"
-            if _stdout_has_failure:
+            if _stdout_has_failure or _stderr_has_failure:
                 logger.warning(
-                    "Experiment exited cleanly but stdout contains failure signals"
+                    "Experiment emitted failure signals during sandbox execution"
                 )
 
         # P1: Warn if experiment completed suspiciously fast (trivially easy benchmark)
@@ -695,8 +717,12 @@ def _execute_iterative_refine(
             evidence_refs=tuple(f"stage-13/{a}" for a in artifacts),
         )
 
-    if llm is None:
-        logger.info("Stage 13: LLM unavailable, saving original experiment as final")
+    def _provider_unavailable(exc: Exception) -> bool:
+        text = str(exc)
+        return "HTTP Error 402" in text or "Payment Required" in text
+
+    def _complete_with_original(*, stop_reason: str, source: str) -> StageResult:
+        logger.info("Stage 13: %s, saving original experiment as final", stop_reason)
         final_dir = stage_dir / "experiment_final"
         _write_project(final_dir, best_files)
         # Backward compat
@@ -707,14 +733,14 @@ def _execute_iterative_refine(
         log.update(
             {
                 "converged": True,
-                "stop_reason": "llm_unavailable",
+                "stop_reason": stop_reason,
                 "best_metric": best_metric,
                 "best_version": "experiment_final/",
                 "iterations": [
                     {
                         "iteration": 0,
                         "version_dir": "experiment_final/",
-                        "source": "fallback_original",
+                        "source": source,
                         "metric": best_metric,
                     }
                 ],
@@ -727,6 +753,12 @@ def _execute_iterative_refine(
             status=StageStatus.DONE,
             artifacts=artifacts,
             evidence_refs=tuple(f"stage-13/{a}" for a in artifacts),
+        )
+
+    if llm is None:
+        return _complete_with_original(
+            stop_reason="llm_unavailable",
+            source="fallback_original",
         )
 
     _pm = prompts or PromptManager()
@@ -762,7 +794,7 @@ def _execute_iterative_refine(
         # BUG-57: Check wall-clock time before starting a new iteration
         _elapsed = _time_bug57.monotonic() - _refine_start_time
         if _elapsed > _max_refine_wall_sec:
-            logger.warning(
+            logger.info(
                 "Stage 13: Wall-clock time cap reached (%.0fs > %ds). "
                 "Stopping refinement after %d iterations.",
                 _elapsed, _max_refine_wall_sec, iteration - 1,
@@ -824,8 +856,23 @@ def _execute_iterative_refine(
             exp_plan_anchor=_exp_plan_anchor,
         )
 
+        # Feedback-refine injection (researchclaw refine command).
+        # Reads optional user directives written by researchclaw/feedback/dispatcher.py.
+        _user_directives = ""
+        try:
+            _ud_path = run_dir / "feedback" / "user_directives.md"
+            if _ud_path.exists():
+                _ud_text = _ud_path.read_text(encoding="utf-8")[:4000]
+                if _ud_text.strip():
+                    _user_directives = (
+                        "\n\nUSER REFINEMENT DIRECTIVES (highest priority — address "
+                        "these in this iteration):\n" + _ud_text + "\n"
+                    )
+        except OSError:
+            pass
+
         # --- Timeout-aware prompt injection ---
-        user_prompt = ip.user + _saturation_hint
+        user_prompt = ip.user + _saturation_hint + _user_directives
         if prior_timed_out and baseline_metric is None:
             timeout_refine_attempts += 1
             timeout_hint = (
@@ -852,6 +899,11 @@ def _execute_iterative_refine(
                 max_tokens=ip.max_tokens or 8192,
             )
         except RuntimeError as exc:
+            if _provider_unavailable(exc):
+                return _complete_with_original(
+                    stop_reason="llm_provider_unavailable",
+                    source="provider_unavailable_fallback",
+                )
             if "ACP prompt timed out after" in str(exc):
                 logger.warning(
                     "Stage 13: ACP prompt timed out during iteration %d; pausing for resume",
@@ -922,6 +974,11 @@ def _execute_iterative_refine(
             try:
                 repair_response = _chat_with_prompt(llm, irp.system, irp.user)
             except RuntimeError as exc:
+                if _provider_unavailable(exc):
+                    return _complete_with_original(
+                        stop_reason="llm_provider_unavailable",
+                        source="provider_unavailable_fallback",
+                    )
                 if "ACP prompt timed out after" in str(exc):
                     logger.warning(
                         "Stage 13: ACP repair prompt timed out during iteration %d; pausing for resume",
@@ -1033,6 +1090,14 @@ def _execute_iterative_refine(
             runtime_issues = _detect_runtime_issues(rerun)
             if runtime_issues:
                 iter_record["runtime_issues"] = runtime_issues
+                fatal_runtime_issues = (
+                    rerun.returncode != 0
+                    or rerun.timed_out
+                    or _runtime_issue_text_is_fatal(runtime_issues)
+                )
+                if fatal_runtime_issues:
+                    metric_val = None
+                    iter_record["metric"] = None
                 logger.info(
                     "Stage 13 iteration %d: runtime issues detected: %s",
                     iteration,
@@ -1047,6 +1112,11 @@ def _execute_iterative_refine(
                 try:
                     repair_resp = _chat_with_prompt(llm, rrp.system, rrp.user)
                 except RuntimeError as exc:
+                    if _provider_unavailable(exc):
+                        return _complete_with_original(
+                            stop_reason="llm_provider_unavailable",
+                            source="provider_unavailable_fallback",
+                        )
                     if "ACP prompt timed out after" in str(exc):
                         logger.warning(
                             "Stage 13: ACP runtime-repair prompt timed out during iteration %d; pausing for resume",
@@ -1080,15 +1150,32 @@ def _execute_iterative_refine(
                         version_dir,
                         timeout_sec=config.experiment.time_budget_sec,
                     )
-                    metric_val = _find_metric(rerun2.metrics, metric_key)
+                    runtime_issues_after_fix = _detect_runtime_issues(rerun2)
+                    fatal_runtime_issues_after_fix = (
+                        rerun2.returncode != 0
+                        or rerun2.timed_out
+                        or _runtime_issue_text_is_fatal(runtime_issues_after_fix)
+                    )
+                    repair_clean = not fatal_runtime_issues_after_fix
+                    metric_val = (
+                        _find_metric(rerun2.metrics, metric_key)
+                        if repair_clean
+                        else None
+                    )
                     iter_record["sandbox_after_fix"] = {
                         "returncode": rerun2.returncode,
                         "metrics": rerun2.metrics,
                         "elapsed_sec": rerun2.elapsed_sec,
                         "timed_out": rerun2.timed_out,
+                        "stderr": rerun2.stderr[:2000] if rerun2.stderr else "",
+                        "stdout": rerun2.stdout[:50000] if rerun2.stdout else "",
                     }
                     iter_record["metric"] = metric_val
                     iter_record["runtime_repaired"] = True
+                    if runtime_issues_after_fix:
+                        iter_record["runtime_issues_after_fix"] = runtime_issues_after_fix
+                    if not repair_clean:
+                        iter_record["runtime_repair_failed"] = True
 
             if metric_val is not None:
                 consecutive_no_metrics = 0

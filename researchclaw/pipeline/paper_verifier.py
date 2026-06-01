@@ -190,6 +190,13 @@ def verify_paper(
         line_num = line_idx + 1
         section = _section_at_line(sections, line_idx)
         section_lower = section.lower() if section else ""
+        stripped_line = line.strip()
+        if (
+            stripped_line.startswith(r"\label{")
+            or stripped_line.startswith(r"\caption{Figure")
+            or stripped_line.startswith("Generated:")
+        ):
+            continue
 
         in_table = any(
             start <= line_idx <= end and is_results

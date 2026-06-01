@@ -620,8 +620,15 @@ def generate_all_charts(
     Returns list of generated image paths.
     """
     if not HAS_MATPLOTLIB:
-        logger.warning("matplotlib not available — skipping chart generation")
-        return []
+        logger.info(
+            "matplotlib not available — generating simple stdlib PNG charts"
+        )
+        return _generate_simple_charts(
+            run_dir,
+            output_dir,
+            metric_key=metric_key,
+            metric_direction=metric_direction,
+        )
 
     if output_dir is None:
         output_dir = run_dir / "charts"
@@ -715,4 +722,177 @@ def generate_all_charts(
             pass
 
     logger.info("Generated %d chart(s) in %s", len(generated), output_dir)
+    return generated
+
+
+def _generate_simple_charts(
+    run_dir: Path,
+    output_dir: Path | None = None,
+    *,
+    metric_key: str,
+    metric_direction: str,
+) -> list[Path]:
+    """Generate fallback PNG charts with only the Python standard library."""
+    from researchclaw.experiment.simple_charts import (
+        save_bar_chart,
+        save_grouped_bar_chart,
+        save_heatmap_chart,
+        save_line_chart,
+    )
+
+    if output_dir is None:
+        output_dir = run_dir / "charts"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    generated: list[Path] = []
+
+    runs: list[dict[str, Any]] = []
+    for stage_subdir in sorted(run_dir.glob("stage-*/runs")):
+        for run_file in sorted(stage_subdir.glob("*.json")):
+            try:
+                data = json.loads(run_file.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    runs.append(data)
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    trajectory_values: list[float] = []
+    for run in runs:
+        metrics = run.get("metrics") or run.get("key_metrics") or {}
+        if isinstance(metrics, dict) and metric_key in metrics:
+            try:
+                value = float(metrics[metric_key])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(value):
+                trajectory_values.append(value)
+    if trajectory_values:
+        path = save_line_chart(
+            output_dir / "metric_trajectory.png",
+            [{"label": metric_key, "values": trajectory_values}],
+        )
+        if path:
+            generated.append(path)
+
+    summary_path = run_dir / "stage-14" / "experiment_summary.json"
+    if not summary_path.exists():
+        for s14_dir in sorted(run_dir.glob("stage-14*"), reverse=True):
+            alt = s14_dir / "experiment_summary.json"
+            if alt.exists():
+                summary_path = alt
+                break
+    if not summary_path.exists():
+        return generated
+
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return generated
+
+    condition_summaries = summary.get("condition_summaries", {})
+    if isinstance(condition_summaries, dict) and condition_summaries:
+        labels: list[str] = []
+        values: list[float] = []
+        ci_low: list[float] = []
+        ci_high: list[float] = []
+        for condition, info in condition_summaries.items():
+            if not isinstance(info, dict):
+                continue
+            metrics = info.get("metrics", {})
+            if not isinstance(metrics, dict):
+                continue
+            raw = metrics.get(f"{metric_key}_mean", metrics.get(metric_key))
+            if raw is None:
+                continue
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(value):
+                continue
+            labels.append(str(condition))
+            values.append(value)
+            ci_low.append(float(info.get("ci95_low", value)))
+            ci_high.append(float(info.get("ci95_high", value)))
+
+        if labels and values:
+            path = save_bar_chart(
+                output_dir / "method_comparison.png",
+                labels,
+                values,
+                ci_low=ci_low,
+                ci_high=ci_high,
+            )
+            if path:
+                generated.append(path)
+
+            baseline = values[0]
+            if baseline != 0 and len(values) > 1:
+                if metric_direction == "minimize":
+                    deltas = [((baseline - v) / abs(baseline)) * 100 for v in values[1:]]
+                else:
+                    deltas = [((v - baseline) / abs(baseline)) * 100 for v in values[1:]]
+                path = save_bar_chart(
+                    output_dir / "ablation_analysis.png",
+                    labels[1:],
+                    deltas,
+                )
+                if path:
+                    generated.append(path)
+
+        metrics_summary = summary.get("metrics_summary", {})
+        metric_names = [
+            key for key in metrics_summary
+            if isinstance(key, str) and not _is_excluded_metric(key)
+        ][:12]
+        if metric_names:
+            matrix: list[list[float]] = []
+            for condition in labels:
+                info = condition_summaries.get(condition, {})
+                metrics = info.get("metrics", {}) if isinstance(info, dict) else {}
+                row: list[float] = []
+                for name in metric_names:
+                    raw = metrics.get(f"{name}_mean", metrics.get(name, 0))
+                    try:
+                        row.append(float(raw))
+                    except (TypeError, ValueError):
+                        row.append(0.0)
+                matrix.append(row)
+            if matrix and len(labels) >= 2 and len(metric_names) >= 2:
+                path = save_heatmap_chart(
+                    output_dir / "metric_heatmap.png",
+                    labels,
+                    metric_names,
+                    matrix,
+                )
+                if path:
+                    generated.append(path)
+
+    metrics_summary = summary.get("metrics_summary", {})
+    if isinstance(metrics_summary, dict):
+        metric_names = [
+            key for key in metrics_summary
+            if isinstance(key, str) and not _is_excluded_metric(key)
+        ][:12]
+        if metric_names:
+            means: list[float] = []
+            mins: list[float] = []
+            maxs: list[float] = []
+            for name in metric_names:
+                item = metrics_summary.get(name, {})
+                if not isinstance(item, dict):
+                    continue
+                means.append(float(item.get("mean", 0.0)))
+                mins.append(float(item.get("min", 0.0)))
+                maxs.append(float(item.get("max", 0.0)))
+            if means:
+                path = save_grouped_bar_chart(
+                    output_dir / "experiment_comparison.png",
+                    metric_names,
+                    ["min", "mean", "max"],
+                    [[lo, mean, hi] for lo, mean, hi in zip(mins, means, maxs)],
+                )
+                if path:
+                    generated.append(path)
+
+    logger.info("Generated %d simple chart(s) in %s", len(generated), output_dir)
     return generated

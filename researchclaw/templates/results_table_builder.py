@@ -61,7 +61,7 @@ def build_results_tables(
     # --- Main results table ---
     conditions = _get_reportable_conditions(registry)
     if not conditions:
-        logger.warning("No reportable conditions — skipping table generation")
+        logger.info("No reportable conditions — skipping table generation")
         return tables
 
     main_table = _build_main_table(

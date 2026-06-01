@@ -96,7 +96,7 @@ class TestCodeAgentConfig:
         assert cfg.exec_fix_max_iterations == 3
         assert cfg.tree_search_enabled is False
         assert cfg.review_max_rounds == 2
-        assert cfg.wall_clock_budget_sec == 600
+        assert cfg.wall_clock_budget_sec == 1800
 
     def test_custom_values(self) -> None:
         cfg = CodeAgentConfig(
@@ -133,6 +133,21 @@ class TestCodeAgentConfig:
         assert "main.py" in result.files
         assert any("CodeAgent.generate() started" in e for e in events)
         assert any("CodeAgent.generate() done" in e for e in events)
+
+    def test_chat_caps_large_token_budget(
+        self, stage_dir: Path, pm: PromptManager,
+    ) -> None:
+        llm = FakeLLM()
+        agent = CodeAgent(
+            llm=llm,
+            prompts=pm,
+            config=CodeAgentConfig(),
+            stage_dir=stage_dir,
+        )
+
+        agent._chat("system", "user", max_tokens=32768)
+
+        assert llm.calls[-1]["max_tokens"] == 8192
 
     def test_wall_clock_budget_check_raises(
         self, stage_dir: Path, pm: PromptManager,

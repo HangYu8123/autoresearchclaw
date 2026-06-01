@@ -12,6 +12,7 @@ report without raising.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -49,6 +50,20 @@ class CompileResult:
     warnings: list[str] = field(default_factory=list)
     fixes_applied: list[str] = field(default_factory=list)
     attempts: int = 0
+
+
+_OPTIONAL_PACKAGE_FALLBACKS: dict[str, tuple[str, ...]] = {
+    # Hyperref is useful but not essential for a readable PDF.  Minimal or
+    # partially repaired MiKTeX installs can miss its transitive dependencies.
+    "refcount.sty": ("hyperref",),
+    "stringenc.sty": ("hyperref",),
+    "intcalc.sty": ("hyperref",),
+    "bitset.sty": ("hyperref",),
+    "atbegshi-ltx.sty": ("hyperref",),
+    "hpdftex.def": ("hyperref",),
+    # nicefrac is purely cosmetic in generated conference papers.
+    "nicefrac.sty": ("nicefrac",),
+}
 
 
 def compile_latex(
@@ -108,7 +123,37 @@ def compile_latex(
         # errors like missing figures or overfull hboxes.
         log_text, pass1_ok = _run_pdflatex(work_dir, tex_name, timeout)
         if log_text is None:
-            result.errors.append(f"pdflatex failed on pass 1 (attempt {attempt})")
+            result.errors.append(
+                f"pdflatex failed to start on pass 1 (attempt {attempt})"
+            )
+            break
+
+        if not pass1_ok:
+            errors, warnings = _parse_log(log_text)
+            if not errors and "timed out" in log_text.lower():
+                errors = [log_text.splitlines()[0]]
+            result.errors = errors
+            result.warnings = warnings
+            result.log_excerpt = log_text[-2000:] if len(log_text) > 2000 else log_text
+
+            tex_text = tex_path.read_text(encoding="utf-8")
+            fixed_text, fixes = fix_common_latex_errors(tex_text, errors)
+            if fixes:
+                result.fixes_applied.extend(fixes)
+                tex_path.write_text(fixed_text, encoding="utf-8")
+                logger.info(
+                    "IMP-18: Applied %d fixes on attempt %d: %s",
+                    len(fixes),
+                    attempt,
+                    fixes,
+                )
+                continue
+
+            logger.warning(
+                "IMP-18: Compilation failed on pass 1 attempt %d with %d errors",
+                attempt,
+                len(errors),
+            )
             break
 
         # BibTeX: always run after pass 1 — it only needs .aux + .bib.
@@ -117,10 +162,15 @@ def compile_latex(
         _run_bibtex(work_dir, bib_stem, timeout=60)
 
         # Passes 2-3: resolve cross-references and bibliography
+        pass_failures: list[str] = []
         for _pass in (2, 3):
-            pass_log, _ = _run_pdflatex(work_dir, tex_name, timeout)
+            pass_log, pass_ok = _run_pdflatex(work_dir, tex_name, timeout)
             if pass_log is not None:
                 log_text = pass_log  # keep final pass log for error analysis
+            if not pass_ok:
+                pass_failures.append(
+                    f"pdflatex failed on pass {_pass} (attempt {attempt})"
+                )
 
         # Parse the final log for errors/warnings
         errors, warnings = _parse_log(log_text)
@@ -130,12 +180,18 @@ def compile_latex(
         # Check for fatal errors only — non-fatal ones (overfull hbox,
         # missing figure in draft) don't prevent a valid PDF.
         fatal = [e for e in errors if _is_fatal_error(e)]
+        fatal.extend(pass_failures)
         result.errors = errors
+        if pass_failures:
+            result.errors.extend(pass_failures)
 
-        if not fatal:
+        pdf_path = work_dir / f"{bib_stem}.pdf"
+        if not fatal and pdf_path.exists() and pdf_path.stat().st_size > 0:
             result.success = True
             logger.info("IMP-18: LaTeX compiled successfully on attempt %d", attempt)
             break
+        if not fatal:
+            result.errors.append("pdflatex completed without producing paper.pdf")
 
         # Try to auto-fix fatal errors
         tex_text = tex_path.read_text(encoding="utf-8")
@@ -189,6 +245,16 @@ def fix_common_latex_errors(
         fixed, n_tab_amp = _fix_escaped_ampersand_in_tabular(fixed)
         if n_tab_amp:
             fixes.append(f"Un-escaped \\& in {n_tab_amp} tabular data row(s)")
+
+    if "\\begin{tabular}" in fixed:
+        fixed, n_tab_specs = _fix_tabular_column_specs(fixed)
+        if n_tab_specs:
+            fixes.append(f"Expanded {n_tab_specs} tabular column spec(s)")
+
+    fixed, removed_packages = _remove_optional_packages_for_missing_files(
+        fixed, errors
+    )
+    fixes.extend(removed_packages)
 
     # Fix escaped \} at end of \caption{...}: \caption{text.\}} → \caption{text.}
     if re.search(r"\\caption\{.*?\\\}", fixed):
@@ -359,10 +425,11 @@ def fix_common_latex_errors(
             )
             fixes.append("Added \\clearpage for float overflow")
 
-        # Misplaced alignment tab &
-        if "misplaced alignment tab" in err_lower:
-            # Usually from & outside tabular — escape stray &
-            pass  # Hard to auto-fix without context
+        # Misplaced/extra alignment tab inside tabular data rows.
+        if "alignment tab" in err_lower and "\\begin{tabular}" in fixed:
+            fixed, n_tab_specs = _fix_tabular_column_specs(fixed)
+            if n_tab_specs:
+                fixes.append(f"Expanded {n_tab_specs} tabular column spec(s)")
 
     return fixed, fixes
 
@@ -537,8 +604,8 @@ def remove_missing_figures(tex_text: str, stage_dir: Path) -> tuple[str, list[st
                             img_rel, new_rel,
                         )
                         return block.replace(img_rel, new_rel)
-                logger.warning(
-                    "Removing figure block with missing image: %s",
+                logger.info(
+                    "Pruned figure block with unavailable image: %s",
                     img_rel,
                 )
                 removed.append(img_rel)
@@ -615,6 +682,14 @@ def _sanitize_tex_unicode(tex_path: Path) -> None:
         "\u2028",  # LINE SEPARATOR
         "\u2029",  # PARAGRAPH SEPARATOR
     )
+    _UNICODE_TEXT_REPLACEMENTS = {
+        "\u2010": "-",  # HYPHEN
+        "\u2011": "-",  # NON-BREAKING HYPHEN
+        "\u2012": "-",  # FIGURE DASH
+        "\u2013": "--",  # EN DASH
+        "\u2014": "---",  # EM DASH
+        "\u00ef": "i",  # LATIN SMALL LETTER I WITH DIAERESIS
+    }
 
     changed = False
     for ch in _UNICODE_SPACES:
@@ -624,6 +699,10 @@ def _sanitize_tex_unicode(tex_path: Path) -> None:
     for ch in _INVISIBLE_CHARS:
         if ch in text:
             text = text.replace(ch, "")
+            changed = True
+    for ch, repl in _UNICODE_TEXT_REPLACEMENTS.items():
+        if ch in text:
+            text = text.replace(ch, repl)
             changed = True
 
     # BUG-201: Transliterate any Cyrillic that leaked into .tex (from bib
@@ -711,6 +790,176 @@ def _sanitize_bib_file(bib_path: Path) -> None:
         logger.info("Sanitized bib file %s", bib_path.name)
 
 
+def _remove_optional_packages_for_missing_files(
+    tex_text: str,
+    errors: list[str],
+) -> tuple[str, list[str]]:
+    """Drop optional package imports after missing transitive dependencies."""
+    missing_files: set[str] = set()
+    for err in errors:
+        for match in re.finditer(
+            r"File [`']([^`']+?\.(?:sty|def|cls|bst))'? not found",
+            err,
+            flags=re.IGNORECASE,
+        ):
+            missing_files.add(match.group(1).lower())
+
+    if not missing_files:
+        return tex_text, []
+
+    packages_to_remove: set[str] = set()
+    for missing in missing_files:
+        packages_to_remove.update(_OPTIONAL_PACKAGE_FALLBACKS.get(missing, ()))
+
+    if not packages_to_remove:
+        return tex_text, []
+
+    fixed = tex_text
+    fixes: list[str] = []
+    for pkg in sorted(packages_to_remove):
+        pattern = re.compile(
+            rf"^[ \t]*\\usepackage(?:\[[^\]]*\])?\{{{re.escape(pkg)}\}}[ \t]*\n?",
+            re.MULTILINE,
+        )
+        fixed, count = pattern.subn("", fixed)
+        if count:
+            if pkg == "hyperref":
+                fixed = re.sub(r"\\href\{[^}]*\}\{([^}]*)\}", r"\1", fixed)
+            fixes.append(
+                f"Removed optional \\usepackage{{{pkg}}} after missing dependency"
+            )
+
+    return fixed, fixes
+
+
+def _fix_tabular_column_specs(tex: str) -> tuple[str, int]:
+    """Expand tabular specs when data rows contain more columns."""
+    changed = 0
+    pieces: list[str] = []
+    pos = 0
+    begin_marker = "\\begin{tabular}{"
+    end_marker = "\\end{tabular}"
+
+    while True:
+        start = tex.find(begin_marker, pos)
+        if start == -1:
+            pieces.append(tex[pos:])
+            break
+        spec_start = start + len(begin_marker)
+        spec_end = _find_matching_brace(tex, spec_start - 1)
+        if spec_end == -1:
+            pieces.append(tex[pos:])
+            break
+        body_start = spec_end + 1
+        end = tex.find(end_marker, body_start)
+        if end == -1:
+            pieces.append(tex[pos:])
+            break
+
+        pieces.append(tex[pos:start])
+        spec = tex[spec_start:spec_end]
+        body = tex[body_start:end]
+        block_end = end + len(end_marker)
+        current_cols = _count_tabular_spec_columns(spec)
+        if current_cols <= 0:
+            pieces.append(tex[start:block_end])
+            pos = block_end
+            continue
+        required_cols = _max_tabular_row_columns(body)
+        if required_cols > current_cols:
+            pad = " " + " ".join("c" for _ in range(required_cols - current_cols))
+            pieces.append(
+                f"\\begin{{tabular}}{{{spec}{pad}}}{body}\\end{{tabular}}"
+            )
+            changed += 1
+        else:
+            pieces.append(tex[start:block_end])
+        pos = block_end
+
+    return "".join(pieces), changed
+
+
+def _find_matching_brace(text: str, open_brace_index: int) -> int:
+    if open_brace_index < 0 or open_brace_index >= len(text):
+        return -1
+    if text[open_brace_index] != "{":
+        return -1
+    depth = 1
+    i = open_brace_index + 1
+    while i < len(text):
+        ch = text[i]
+        if ch == "{" and (i == 0 or text[i - 1] != "\\"):
+            depth += 1
+        elif ch == "}" and (i == 0 or text[i - 1] != "\\"):
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _count_tabular_spec_columns(spec: str) -> int:
+    """Count column declarations in a simple LaTeX tabular spec."""
+    count = 0
+    i = 0
+    while i < len(spec):
+        ch = spec[i]
+        if ch in "lcrX":
+            count += 1
+            i += 1
+            continue
+        if ch in "pmb":
+            count += 1
+            i += 1
+            if i < len(spec) and spec[i] == "{":
+                depth = 1
+                i += 1
+                while i < len(spec) and depth:
+                    if spec[i] == "{":
+                        depth += 1
+                    elif spec[i] == "}":
+                        depth -= 1
+                    i += 1
+            continue
+        if ch in "@!><":
+            i += 1
+            if i < len(spec) and spec[i] == "{":
+                depth = 1
+                i += 1
+                while i < len(spec) and depth:
+                    if spec[i] == "{":
+                        depth += 1
+                    elif spec[i] == "}":
+                        depth -= 1
+                    i += 1
+            continue
+        i += 1
+    return count
+
+
+def _max_tabular_row_columns(body: str) -> int:
+    max_cols = 0
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("%"):
+            continue
+        if not _looks_like_tabular_data_row(line):
+            continue
+        cols = len(re.findall(r"(?<!\\)&", line)) + 1
+        max_cols = max(max_cols, cols)
+    return max_cols
+
+
+def _looks_like_tabular_data_row(line: str) -> bool:
+    if "&" not in line or "\\\\" not in line:
+        return False
+    if "\\multicolumn" in line:
+        return False
+    return not line.startswith(
+        ("\\toprule", "\\midrule", "\\bottomrule", "\\hline", "\\cline")
+    )
+
+
 def _fix_escaped_ampersand_in_tabular(tex: str) -> tuple[str, int]:
     """Replace ``\\&`` with ``&`` inside tabular environments.
 
@@ -759,21 +1008,54 @@ def _run_pdflatex(
     entire compilation pipeline — bibtex never runs, all citations [?].
     """
     try:
+        cmd = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error"]
+        if _pdflatex_is_miktex():
+            cmd.append("-disable-installer")
+        cmd.append(tex_name)
         proc = subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", tex_name],
+            cmd,
             cwd=work_dir,
             capture_output=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired:
-        logger.warning("pdflatex timed out after %ds", timeout)
-        return None, False
+    except subprocess.TimeoutExpired as exc:
+        logger.debug("pdflatex timed out after %ds", timeout)
+        stdout = _decode_subprocess_output(exc.stdout or exc.output)
+        stderr = _decode_subprocess_output(exc.stderr)
+        log_text = (
+            f"pdflatex timed out after {timeout}s\n"
+            f"{stdout}\n{stderr}"
+        )
+        return log_text, False
     except FileNotFoundError:
         return None, False
-    stdout = proc.stdout.decode("utf-8", errors="replace")
-    stderr = proc.stderr.decode("utf-8", errors="replace")
+    stdout = _decode_subprocess_output(proc.stdout)
+    stderr = _decode_subprocess_output(proc.stderr)
     log_text = stdout + "\n" + stderr
     return log_text, proc.returncode == 0
+
+
+def _decode_subprocess_output(data: bytes | str | None) -> str:
+    if data is None:
+        return ""
+    if isinstance(data, str):
+        return data
+    return data.decode("utf-8", errors="replace")
+
+
+def _pdflatex_is_miktex() -> bool:
+    try:
+        proc = subprocess.run(
+            ["pdflatex", "-version"],
+            capture_output=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    text = _decode_subprocess_output(proc.stdout) + _decode_subprocess_output(
+        proc.stderr
+    )
+    return "miktex" in text.lower()
 
 
 # Fatal error patterns — these prevent a valid PDF from being generated.

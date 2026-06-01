@@ -38,6 +38,21 @@ class ExperimentHarness:
         """Fraction of time budget used (0.0 to 1.0)."""
         return min(self.elapsed / self._time_budget, 1.0)
 
+    @property
+    def metrics(self) -> dict[str, float]:
+        """Reported metrics collected so far."""
+        return dict(self._metrics)
+
+    @property
+    def time_budget(self) -> int:
+        """Configured time budget in seconds."""
+        return self._time_budget
+
+    @property
+    def time_limit(self) -> int:
+        """Alias for generated experiments that refer to the budget as a limit."""
+        return self._time_budget
+
     def should_stop(self) -> bool:
         """Return True if approaching 80% of time budget."""
         return self.elapsed >= self._time_budget * 0.8
@@ -84,7 +99,12 @@ class ExperimentHarness:
         """Log a structured result row (e.g., per-condition results)."""
         self._partial_results.append(result_dict)
 
-    def finalize(self) -> None:
+    def finalize(
+        self,
+        hyperparameters: dict[str, object] | None = None,
+        extra_data: dict[str, object] | None = None,
+        **kwargs: object,
+    ) -> None:
         """Write results.json with all reported metrics and partial results."""
         output = {
             "metrics": self._metrics,
@@ -95,6 +115,12 @@ class ExperimentHarness:
         }
         if self._partial_results:
             output["results"] = self._partial_results
+        if hyperparameters is not None:
+            output["hyperparameters"] = hyperparameters
+        if extra_data:
+            output.update(extra_data)
+        if kwargs:
+            output.update(kwargs)
 
         try:
             with open("results.json", "w", encoding="utf-8") as f:

@@ -257,7 +257,7 @@ class FigureOrchestrator(AgentOrchestrator):
             )
             all_rendered.extend(rendered_images)
         elif image_figures:
-            self.logger.warning(
+            self.logger.info(
                 "Nano Banana disabled — skipping %d image figures",
                 len(image_figures),
             )
@@ -435,7 +435,7 @@ class FigureOrchestrator(AgentOrchestrator):
                     failed_ids.add(str(_fid[0]))
             figures = [f for f in figures if f.get("figure_id") in failed_ids]
 
-            self.logger.warning(
+            self.logger.info(
                 "Critic: %d/%d figures need revision",
                 len(failed_ids), len(rendered),
             )

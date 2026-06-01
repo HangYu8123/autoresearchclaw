@@ -33,6 +33,8 @@ from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
+_MAX_CODE_AGENT_CHAT_TOKENS = 1024 * 64
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -1422,11 +1424,12 @@ class CodeAgent:
         """Make an LLM call and track count."""
         self._check_budget("LLM call")
         self._calls += 1
+        bounded_max_tokens = min(max_tokens, _MAX_CODE_AGENT_CHAT_TOKENS)
         messages = [{"role": "user", "content": user}]
         return self._llm.chat(
             messages=messages,
             system=system,
-            max_tokens=max_tokens,
+            max_tokens=bounded_max_tokens,
         )
 
     def _get_or_create_sandbox(self) -> _SandboxLike:

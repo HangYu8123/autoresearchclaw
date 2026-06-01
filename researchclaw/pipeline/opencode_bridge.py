@@ -555,7 +555,16 @@ class OpenCodeBridge:
         # Use -m flag to specify model (more reliable than opencode.json)
         resolved_model = self._resolve_opencode_model()
         opencode_cmd = shutil.which("opencode") or "opencode"
-        cmd = [opencode_cmd, "run", "-m", resolved_model, "--format", "json", prompt]
+        cmd = [
+            opencode_cmd,
+            "run",
+            "-m",
+            resolved_model,
+            "--format",
+            "json",
+            "--dangerously-skip-permissions",
+            prompt,
+        ]
 
         # Put OpenCode in its own session/process group so the whole tree
         # can be killed atomically on timeout.
@@ -574,25 +583,52 @@ class OpenCodeBridge:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
         t0 = time.monotonic()
+        wall_t0 = time.time()
+        deadline = t0 + self._timeout_sec
+        output_stable_sec = 45
         proc: subprocess.Popen | None = None
         try:
             proc = subprocess.Popen(cmd, **popen_kwargs)
-            try:
-                stdout, stderr = proc.communicate(timeout=self._timeout_sec)
-            except subprocess.TimeoutExpired:
-                # Kill the entire process group so no orphan keeps pipes open.
-                self._kill_process_tree(proc)
-                # Drain with a bounded timeout to prevent any residual deadlock.
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._kill_process_tree(proc)
+                    try:
+                        stdout, stderr = proc.communicate(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        stdout, stderr = "", ""
+                    elapsed = time.monotonic() - t0
+                    partial_out = (stdout or "")[:2000]
+                    log = f"TIMEOUT after {elapsed:.1f}s"
+                    if partial_out:
+                        log += f"\nstdout: {partial_out}"
+                    return False, self._redact_sensitive(log), elapsed
+
                 try:
-                    stdout, stderr = proc.communicate(timeout=30)
+                    stdout, stderr = proc.communicate(timeout=min(5, remaining))
+                    break
                 except subprocess.TimeoutExpired:
-                    stdout, stderr = "", ""
-                elapsed = time.monotonic() - t0
-                partial_out = (stdout or "")[:2000]
-                log = f"TIMEOUT after {elapsed:.1f}s"
-                if partial_out:
-                    log += f"\nstdout: {partial_out}"
-                return False, self._redact_sensitive(log), elapsed
+                    newest_output = self._collectible_output_mtime(workspace)
+                    if (
+                        newest_output is not None
+                        and time.time() - newest_output >= output_stable_sec
+                        and time.time() - wall_t0 >= output_stable_sec
+                    ):
+                        self._kill_process_tree(proc)
+                        try:
+                            stdout, stderr = proc.communicate(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            stdout, stderr = "", ""
+                        elapsed = time.monotonic() - t0
+                        log = (
+                            "OpenCode produced stable collectable files "
+                            f"after {elapsed:.1f}s; stopped lingering process."
+                        )
+                        if stdout:
+                            log += f"\nstdout: {stdout[:2000]}"
+                        if stderr:
+                            log += f"\nstderr: {stderr[:2000]}"
+                        return True, self._redact_sensitive(log), elapsed
 
             elapsed = time.monotonic() - t0
             log = self._redact_sensitive((stdout or "") + "\n" + (stderr or ""))
@@ -611,6 +647,20 @@ class OpenCodeBridge:
                     pass
 
     # -- file collection -------------------------------------------------------
+
+    @staticmethod
+    def _collectible_output_mtime(workspace: Path) -> float | None:
+        paths = [p for p in workspace.rglob("*.py") if "__pycache__" not in p.parts]
+        for extra in ("requirements.txt", "setup.py"):
+            path = workspace / extra
+            if path.exists():
+                paths.append(path)
+        if not any(path.name == "main.py" for path in paths):
+            return None
+        try:
+            return max(path.stat().st_mtime for path in paths)
+        except OSError:
+            return None
 
     @staticmethod
     def _collect_files(workspace: Path) -> dict[str, str]:
@@ -774,8 +824,11 @@ class OpenCodeBridge:
 
         workspace: Path | None = None
         last_error = ""
+        last_elapsed = 0.0
+        attempts_made = 0
 
         for attempt in range(1 + self._max_retries):
+            attempts_made = attempt + 1
             # Prepare workspace
             try:
                 workspace = self._prepare_workspace(
@@ -845,6 +898,7 @@ class OpenCodeBridge:
                 )
 
             last_error = log
+            last_elapsed = elapsed
             logger.warning(
                 "Beast mode: OpenCode attempt %d failed (%.1fs): %s",
                 attempt + 1,
@@ -854,12 +908,15 @@ class OpenCodeBridge:
             # Cleanup failed workspace
             if self._workspace_cleanup and workspace and workspace.exists():
                 shutil.rmtree(workspace, ignore_errors=True)
+            if log.startswith("TIMEOUT"):
+                break
 
         # All attempts failed
         return OpenCodeResult(
             success=False,
             opencode_log=last_error,
-            error=f"OpenCode failed after {1 + self._max_retries} attempt(s)",
+            elapsed_sec=last_elapsed,
+            error=f"OpenCode failed after {attempts_made or 1} attempt(s)",
         )
 
 

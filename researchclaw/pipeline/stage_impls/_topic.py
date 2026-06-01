@@ -173,8 +173,6 @@ Derived from `goal.md` for topic: {config.research.topic}
 ## Generated
 {_utcnow_iso()}
 """
-    (stage_dir / "problem_tree.md").write_text(body, encoding="utf-8")
-
     # IMP-35: Topic/title quality pre-evaluation
     # Quick LLM check: is the topic well-scoped for a conference paper?
     if llm is not None:
@@ -202,10 +200,16 @@ Derived from `goal.md` for topic: {config.research.topic}
             if isinstance(_eval_data, dict):
                 overall = _eval_data.get("overall", 10)
                 if isinstance(overall, (int, float)) and overall < 5:
-                    logger.warning(
-                        "IMP-35: Topic quality score %s/10 — consider refining: %s",
+                    suggestion = str(_eval_data.get("suggestion", "")).strip()
+                    if suggestion:
+                        body = (
+                            f"{body.rstrip()}\n\n"
+                            "## Refined Topic Framing\n"
+                            f"{suggestion}\n"
+                        )
+                    logger.info(
+                        "IMP-35: Topic quality score %s/10; applied refined framing",
                         overall,
-                        _eval_data.get("suggestion", ""),
                     )
                 else:
                     logger.info("IMP-35: Topic quality score %s/10", overall)
@@ -214,6 +218,8 @@ Derived from `goal.md` for topic: {config.research.topic}
                 )
         except Exception:  # noqa: BLE001
             logger.debug("IMP-35: Topic evaluation skipped (non-blocking)")
+
+    (stage_dir / "problem_tree.md").write_text(body, encoding="utf-8")
 
     return StageResult(
         stage=Stage.PROBLEM_DECOMPOSE,

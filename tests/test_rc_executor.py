@@ -13,6 +13,7 @@ import pytest
 from researchclaw.adapters import AdapterBundle
 from researchclaw.config import RCConfig
 from researchclaw.pipeline import executor as rc_executor
+from researchclaw.pipeline.stage_impls import _paper_writing as paper_writing
 from researchclaw.pipeline.stages import Stage, StageStatus
 
 
@@ -433,6 +434,57 @@ def test_execute_stage_missing_required_input_returns_failed(
     assert "Missing input: goal.md" in (result.error or "")
 
 
+def test_problem_decompose_applies_low_topic_quality_suggestion(
+    run_dir: Path,
+    rc_config: RCConfig,
+    adapters: AdapterBundle,
+) -> None:
+    class SequencedLLMClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def chat(self, messages: list[dict[str, str]], **kwargs: object):
+            _ = messages, kwargs
+            self.calls += 1
+            from researchclaw.llm.client import LLMResponse
+
+            if self.calls == 1:
+                return LLMResponse(
+                    content="# Problem Decomposition\n\nInitial body",
+                    model="fake-model",
+                )
+            return LLMResponse(
+                content=json.dumps(
+                    {
+                        "novelty": 5,
+                        "specificity": 4,
+                        "feasibility": 4,
+                        "overall": 4,
+                        "suggestion": "Use RLBench manipulation with learned keyframe selection.",
+                    }
+                ),
+                model="fake-model",
+            )
+
+    _write_prior_artifact(run_dir, 1, "goal.md", "goal content")
+    stage_dir = run_dir / "stage-02"
+    stage_dir.mkdir()
+
+    result = rc_executor._STAGE_EXECUTORS[Stage.PROBLEM_DECOMPOSE](
+        stage_dir,
+        run_dir,
+        rc_config,
+        adapters,
+        llm=SequencedLLMClient(),
+    )
+
+    assert result.status == StageStatus.DONE
+    problem_tree = (stage_dir / "problem_tree.md").read_text(encoding="utf-8")
+    assert "## Refined Topic Framing" in problem_tree
+    assert "Use RLBench manipulation" in problem_tree
+    assert (stage_dir / "topic_evaluation.json").exists()
+
+
 def test_execute_stage_gate_behavior_auto_approve_true_keeps_done(
     monkeypatch: pytest.MonkeyPatch,
     run_dir: Path,
@@ -658,6 +710,57 @@ def test_execute_stage_executor_exception_returns_failed(
     assert result.status == StageStatus.FAILED
     assert result.decision == "retry"
     assert "stage exploded" in (result.error or "")
+
+
+def test_literature_collect_skips_anonymous_s2(
+    monkeypatch: pytest.MonkeyPatch,
+    run_dir: Path,
+    rc_config: RCConfig,
+    adapters: AdapterBundle,
+) -> None:
+    from researchclaw.literature.models import Paper
+    from researchclaw.pipeline.stage_impls import _literature
+
+    _write_prior_artifact(
+        run_dir,
+        3,
+        "queries.json",
+        json.dumps({"queries": ["vision language action"], "year_min": 2020}),
+    )
+    _write_prior_artifact(run_dir, 3, "search_plan.yaml", "queries: []\n")
+
+    captured_sources: tuple[str, ...] = ()
+
+    def fake_search_papers_multi_query(*_args: object, **kwargs: object) -> list[Paper]:
+        nonlocal captured_sources
+        captured_sources = tuple(cast(tuple[str, ...], kwargs.get("sources", ())))
+        return [
+            Paper(
+                paper_id="openalex-1",
+                title="Prompt Memory for VLA",
+                year=2024,
+                source="openalex",
+            )
+        ]
+
+    monkeypatch.setattr(
+        "researchclaw.literature.search.search_papers_multi_query",
+        fake_search_papers_multi_query,
+    )
+
+    stage_dir = run_dir / "stage-04"
+    stage_dir.mkdir()
+    result = _literature._execute_literature_collect(
+        stage_dir,
+        run_dir,
+        rc_config,
+        adapters,
+        llm=None,
+    )
+
+    assert result.status == StageStatus.DONE
+    assert captured_sources == ("openalex", "arxiv")
+    assert (run_dir / "stage-04" / "candidates.jsonl").exists()
 
 
 @pytest.mark.parametrize(
@@ -1440,6 +1543,41 @@ class TestMultiPerspectiveGenerate:
         call = fake_llm.calls[0]
         assert "RL" in call[0]["content"]
 
+    def test_caps_debate_max_tokens(self, tmp_path: Path) -> None:
+        roles = {"r1": {"system": "Sys", "user": "User"}}
+
+        class CapturingLLM:
+            def __init__(self) -> None:
+                self.max_tokens: list[object] = []
+
+            def chat(self, messages: list[dict[str, str]], **kwargs: object):
+                _ = messages
+                self.max_tokens.append(kwargs.get("max_tokens"))
+                from researchclaw.llm.client import LLMResponse
+
+                return LLMResponse(content="ok", model="fake-model")
+
+        fake_llm = CapturingLLM()
+        rc_executor._multi_perspective_generate(
+            cast(Any, fake_llm), roles, {}, tmp_path / "p"
+        )
+        assert fake_llm.max_tokens == [4096]
+
+    def test_min_successes_stops_after_target(self, tmp_path: Path) -> None:
+        roles = {
+            "role_a": {"system": "You are A.", "user": "Do A."},
+            "role_b": {"system": "You are B.", "user": "Do B."},
+            "role_c": {"system": "You are C.", "user": "Do C."},
+        }
+        fake_llm = FakeLLMClient("perspective output")
+
+        result = rc_executor._multi_perspective_generate(
+            fake_llm, roles, {}, tmp_path / "p", min_successes=2
+        )
+
+        assert set(result.keys()) == {"role_a", "role_b"}
+        assert len(fake_llm.calls) == 2
+
 
 class TestSynthesizePerspectives:
     def test_combines_perspectives(self) -> None:
@@ -1473,9 +1611,10 @@ class TestHypothesisGenDebate:
         assert "hypotheses.md" in result.artifacts
         perspectives_dir = stage_dir / "perspectives"
         assert perspectives_dir.exists()
-        # Should have 3 perspective files (innovator, pragmatist, contrarian)
+        # Stage 08 can proceed after two successful perspectives to avoid a
+        # single slow debate role blocking the pipeline.
         perspective_files = list(perspectives_dir.glob("*.md"))
-        assert len(perspective_files) == 3
+        assert len(perspective_files) >= 2
 
     def test_hypothesis_gen_without_llm_no_perspectives(
         self, tmp_path: Path, rc_config: RCConfig, adapters: AdapterBundle
@@ -3396,6 +3535,26 @@ def _build_draft(**section_overrides: str) -> str:
     return "\n".join(parts)
 
 
+def _build_h2_draft(**section_overrides: str) -> str:
+    """Build a paper draft with H2 sections matching Stage 17 output."""
+    defaults = {
+        "Abstract": _make_prose(200),
+        "Introduction": _make_prose(900),
+        "Related Work": _make_comparative_prose(700),
+        "Method": _make_prose(1200),
+        "Experiments": _make_prose(1000),
+        "Results": _make_results_prose(700),
+        "Discussion": _make_prose(500),
+        "Limitations": _make_prose(250),
+        "Conclusion": _make_prose(250),
+    }
+    defaults.update(section_overrides)
+    parts = ["# My Research Title\n"]
+    for heading, body in defaults.items():
+        parts.append(f"## {heading}\n{body}\n")
+    return "\n".join(parts)
+
+
 class TestValidateDraftQuality:
     """Tests for _validate_draft_quality()."""
 
@@ -3448,6 +3607,23 @@ class TestValidateDraftQuality:
         assert "section_analysis" in data
         assert "overall_warnings" in data
         assert "revision_directives" in data
+
+    def test_quality_repair_expands_short_h2_sections(self) -> None:
+        """Deterministic repair clears Stage 17 H2 section length warnings."""
+        draft = _build_h2_draft(
+            Abstract=_make_prose(130),
+            Introduction=_make_prose(620),
+            **{"Related Work": _make_comparative_prose(450)},
+            Method=_make_prose(800),
+            Discussion=_make_prose(330),
+            Limitations=_make_prose(190),
+            Conclusion=_make_prose(195),
+        )
+
+        repaired = paper_writing._repair_draft_quality_gate(draft)
+        result = rc_executor._validate_draft_quality(repaired)
+
+        assert result["overall_warnings"] == []
 
 
 class TestExperimentValidatorPrecision:
@@ -3534,3 +3710,31 @@ class TestExperimentValidatorPrecision:
             in issue
             for issue in issues
         )
+
+    def test_deep_validation_allows_similar_unrelated_class_shapes(self) -> None:
+        from researchclaw.experiment.validator import deep_validate_files
+
+        issues = deep_validate_files(
+            {
+                "main.py": (
+                    "class Encoder:\n"
+                    "    def __init__(self, width):\n"
+                    "        self.width = width\n"
+                    "        self.scale = 2\n\n"
+                    "    def forward(self, value):\n"
+                    "        hidden = value * self.scale\n"
+                    "        hidden = hidden + self.width\n"
+                    "        return hidden\n\n"
+                    "class Decoder:\n"
+                    "    def __init__(self, width):\n"
+                    "        self.width = width\n"
+                    "        self.bias = 3\n\n"
+                    "    def forward(self, value):\n"
+                    "        hidden = value - self.bias\n"
+                    "        hidden = hidden / max(self.width, 1)\n"
+                    "        return hidden\n"
+                )
+            }
+        )
+
+        assert not any("copy-paste variants" in issue for issue in issues)

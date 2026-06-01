@@ -158,6 +158,11 @@ class CriticAgent(BaseAgent):
             pixel_issues = self._check_rendered_image(output_path)
             issues.extend(pixel_issues)
 
+        # In non-strict mode, warning-level critic feedback is advisory. Keep
+        # review issues focused on defects that should block the pipeline.
+        if not self._strict:
+            issues = [i for i in issues if i.get("severity") == "critical"]
+
         # Determine pass/fail
         critical_issues = [i for i in issues if i.get("severity") == "critical"]
         passed = len(critical_issues) == 0
@@ -260,18 +265,21 @@ class CriticAgent(BaseAgent):
         if not script_code:
             return issues
 
-        # Check for axis labels
+        # Check for axis labels. Polar/radar charts use angular/radial labels,
+        # so conventional x/y labels are not required.
+        is_polar = "projection='polar'" in script_code or 'projection="polar"' in script_code or "polar=True" in script_code
         has_xlabel = "set_xlabel" in script_code or "xlabel" in script_code
         has_ylabel = "set_ylabel" in script_code or "ylabel" in script_code
         has_title = "set_title" in script_code or ".title(" in script_code
+        has_title = has_title or "suptitle" in script_code
 
-        if not has_xlabel:
+        if not has_xlabel and not is_polar:
             issues.append({
                 "type": "text_correctness",
                 "severity": "warning",
                 "message": "Missing x-axis label",
             })
-        if not has_ylabel:
+        if not has_ylabel and not is_polar:
             issues.append({
                 "type": "text_correctness",
                 "severity": "warning",
@@ -311,52 +319,54 @@ class CriticAgent(BaseAgent):
         script_code: str,
         fig_info: dict[str, Any],
     ) -> list[dict[str, str]]:
-        """Use LLM to assess visual quality of the chart code."""
+        """Assess visual quality with deterministic publication checks."""
         if not script_code:
             return []
-
-        system_prompt = (
-            "You are an expert reviewer of scientific figures for AI conferences "
-            "(NeurIPS, ICML, ICLR). Review the following matplotlib script and "
-            "identify any quality issues.\n\n"
-            "Check for:\n"
-            "1. DPI setting (should be 300+ for publication)\n"
-            "2. Font sizes (readable when printed: title ≥12pt, labels ≥10pt)\n"
-            "3. Color choices (colorblind-safe, not default matplotlib)\n"
-            "4. Layout (tight_layout or constrained_layout used)\n"
-            "5. Grid and styling (clean, professional)\n"
-            "6. Legend placement (visible, not overlapping data)\n"
-            "7. Data representation (appropriate chart type for the data)\n\n"
-            "Return a JSON object with:\n"
-            "- quality_score: 1-10 (10 = publication ready)\n"
-            "- issues: list of objects with 'type', 'severity' ('warning' or 'critical'), 'message'\n"
-            "- If score >= 7 with no critical issues, the figure passes.\n"
-        )
-
-        user_prompt = (
-            f"Chart title: {fig_info.get('title', 'Unknown')}\n"
-            f"Chart caption: {fig_info.get('caption', '')}\n\n"
-            f"Script:\n```python\n{script_code[:3000]}\n```"
-        )
-
-        result = self._chat_json(system_prompt, user_prompt, max_tokens=2048)
-
         issues: list[dict[str, str]] = []
-        quality_score = result.get("quality_score", 5)
 
-        for issue in result.get("issues", []):
-            if isinstance(issue, dict) and issue.get("message"):
-                issues.append({
-                    "type": "visual_quality",
-                    "severity": issue.get("severity", "warning"),
-                    "message": str(issue["message"]),
-                })
+        def _rcparam_number(name: str) -> float | None:
+            pattern = rf'["\']{re.escape(name)}["\']\s*:\s*([0-9]+(?:\.[0-9]+)?)'
+            match = re.search(pattern, script_code)
+            if not match:
+                return None
+            try:
+                return float(match.group(1))
+            except ValueError:
+                return None
 
-        if quality_score < 4:
+        dpi = _rcparam_number("savefig.dpi") or _rcparam_number("figure.dpi")
+        if dpi is not None and dpi < 300:
             issues.append({
                 "type": "visual_quality",
                 "severity": "critical",
-                "message": f"Overall quality score too low: {quality_score}/10",
+                "message": f"DPI is below publication threshold: {dpi:g}",
+            })
+
+        title_size = _rcparam_number("axes.titlesize")
+        label_size = _rcparam_number("axes.labelsize")
+        if title_size is not None and title_size < 12:
+            issues.append({
+                "type": "visual_quality",
+                "severity": "critical",
+                "message": f"Title font size is below publication threshold: {title_size:g}pt",
+            })
+        if label_size is not None and label_size < 10:
+            issues.append({
+                "type": "visual_quality",
+                "severity": "critical",
+                "message": f"Axis label font size is below publication threshold: {label_size:g}pt",
+            })
+
+        explicit_sizes = [
+            float(m.group(1))
+            for m in re.finditer(r"fontsize\s*=\s*([0-9]+(?:\.[0-9]+)?)", script_code)
+        ]
+        too_small = [size for size in explicit_sizes if size < 9]
+        if too_small:
+            issues.append({
+                "type": "visual_quality",
+                "severity": "critical",
+                "message": f"Explicit font size is below publication threshold: {min(too_small):g}pt",
             })
 
         return issues

@@ -624,16 +624,28 @@ def execute_stage(
         adapters.memory.append("stages", f"{run_id}:{int(stage)}:running")
 
     llm = None
-    try:
-        if config.llm.provider == "acp":
-            llm = create_llm_client(config)
-        else:
-            candidate = LLMClient.from_rc_config(config)
-            if candidate.config.base_url and candidate.config.api_key:
-                llm = candidate
-    except Exception as _llm_exc:  # noqa: BLE001
-        logger.warning("LLM client creation failed: %s", _llm_exc)
-        llm = None
+    llm_provider_unavailable = False
+    refine_log = run_dir / "stage-13" / "refinement_log.json"
+    if int(stage) >= int(Stage.RESULT_ANALYSIS) and refine_log.is_file():
+        try:
+            refine_data = json.loads(refine_log.read_text(encoding="utf-8"))
+            llm_provider_unavailable = (
+                isinstance(refine_data, dict)
+                and refine_data.get("stop_reason") == "llm_provider_unavailable"
+            )
+        except (json.JSONDecodeError, OSError):
+            llm_provider_unavailable = False
+    if not llm_provider_unavailable:
+        try:
+            if config.llm.provider == "acp":
+                llm = create_llm_client(config)
+            else:
+                candidate = LLMClient.from_rc_config(config)
+                if candidate.config.base_url and candidate.config.api_key:
+                    llm = candidate
+        except Exception as _llm_exc:  # noqa: BLE001
+            logger.warning("LLM client creation failed: %s", _llm_exc)
+            llm = None
 
     try:
         _ = advance(stage, StageStatus.PENDING, TransitionEvent.START)

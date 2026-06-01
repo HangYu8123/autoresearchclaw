@@ -53,6 +53,12 @@ _PREFLIGHT_TOKEN_HEADROOM_MODELS = frozenset(
     }
 )
 
+# Reasoning models that consume large amounts of max_tokens on internal
+# chain-of-thought. They need a minimum token floor so the visible
+# completion is not crowded out by reasoning tokens.
+_REASONING_MODELS = frozenset(_NEW_PARAM_MODELS | _PREFLIGHT_TOKEN_HEADROOM_MODELS)
+_REASONING_MIN_TOKENS = 32768
+
 _PREFLIGHT_PROMPT = "Reply with exactly: pong"
 
 _DEFAULT_USER_AGENT = (
@@ -335,31 +341,48 @@ class LLMClient:
 
         last_error: Exception | None = None
 
+        def _is_empty(r: LLMResponse) -> bool:
+            return (r.content is None or not str(r.content).strip())
+
+        def _strip(r: LLMResponse) -> LLMResponse:
+            if not strip_thinking:
+                return r
+            from researchclaw.utils.thinking_tags import strip_thinking_tags
+            return LLMResponse(
+                content=strip_thinking_tags(r.content),
+                model=r.model,
+                prompt_tokens=r.prompt_tokens,
+                completion_tokens=r.completion_tokens,
+                total_tokens=r.total_tokens,
+                finish_reason=r.finish_reason,
+                truncated=r.truncated,
+                raw=r.raw,
+            )
+
         for m in models:
             try:
                 resp = self._call_with_retry(m, messages, max_tok, temp, json_mode)
-                if strip_thinking:
-                    from researchclaw.utils.thinking_tags import strip_thinking_tags
-
-                    resp = LLMResponse(
-                        content=strip_thinking_tags(resp.content),
-                        model=resp.model,
-                        prompt_tokens=resp.prompt_tokens,
-                        completion_tokens=resp.completion_tokens,
-                        total_tokens=resp.total_tokens,
-                        finish_reason=resp.finish_reason,
-                        truncated=resp.truncated,
-                        raw=resp.raw,
-                    )
-                if (
-                    (resp.content is None or not str(resp.content).strip())
-                    and resp.finish_reason != "content_filter"
-                ):
-                    logger.warning("Model %s returned empty response.", m)
-                    raise RuntimeError(f"Model {m} returned empty response")
+                resp = _strip(resp)
+                if _is_empty(resp) and resp.finish_reason != "content_filter":
+                    # If the budget was exhausted (reasoning models often burn
+                    # all tokens on CoT), give the SAME model one more try
+                    # with double the budget before falling over to the next
+                    # model in the chain.
+                    if resp.finish_reason in ("length", "max_output_tokens"):
+                        retry_tok = max_tok * 2
+                        logger.warning(
+                            "Model %s returned empty response with finish_reason=%s; "
+                            "retrying same model with max_tokens=%d.",
+                            m, resp.finish_reason, retry_tok,
+                        )
+                        resp = self._call_with_retry(m, messages, retry_tok, temp, json_mode)
+                        resp = _strip(resp)
+                    if _is_empty(resp):
+                        logger.warning("Model %s returned empty response.", m)
+                        raise RuntimeError(f"Model {m} returned empty response")
                 return resp
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Model %s failed: %s. Trying next.", m, exc)
+                logger.info("Model %s failed: %s. Trying next.", m, exc)
                 last_error = exc
 
         raise RuntimeError(
@@ -562,10 +585,17 @@ class LLMClient:
                 if self._supports_temperature(model):
                     body["temperature"] = _temp
 
-                # Use correct token parameter based on model
+                # Use correct token parameter based on model.
+                # Reasoning models (o-series, gpt-5, deepseek-v4/r1) need a
+                # token floor so internal CoT does not crowd out the visible
+                # completion (root cause of repeated 'empty response' errors).
+                _is_reasoning = any(
+                    model.startswith(prefix) for prefix in _REASONING_MODELS
+                )
                 if any(model.startswith(prefix) for prefix in _NEW_PARAM_MODELS):
-                    reasoning_min = 32768
-                    body["max_completion_tokens"] = max(max_tokens, reasoning_min)
+                    body["max_completion_tokens"] = max(max_tokens, _REASONING_MIN_TOKENS)
+                elif _is_reasoning:
+                    body["max_tokens"] = max(max_tokens, _REASONING_MIN_TOKENS)
                 else:
                     body["max_tokens"] = max_tokens
 

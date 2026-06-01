@@ -621,12 +621,11 @@ class TestCriticAgent:
 
     def test_visual_quality_low_score(self):
         from researchclaw.agents.figure_agent.critic import CriticAgent
-        llm = _FakeLLM(json.dumps({
-            "quality_score": 3,
-            "issues": [{"severity": "critical", "message": "Bad colors"}],
-        }))
-        agent = CriticAgent(llm)
-        issues = agent._check_visual_quality("plt.plot([1,2])", {"title": "Bad"})
+        agent = CriticAgent(_FakeLLM())
+        issues = agent._check_visual_quality(
+            'plt.rcParams.update({"axes.titlesize": 8, "axes.labelsize": 7, "savefig.dpi": 150})',
+            {"title": "Bad"},
+        )
         assert any(i["severity"] == "critical" for i in issues)
 
     def test_execute_full_review(self):

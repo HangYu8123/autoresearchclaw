@@ -17,6 +17,7 @@ from researchclaw.templates.compiler import (
     CompileResult,
     _is_fatal_error,
     _sanitize_tex_unicode,
+    compile_latex,
     fix_common_latex_errors,
 )
 
@@ -209,6 +210,100 @@ class TestFixUnicodeErrors:
         assert fixed == tex
         # No fix should be applied since the char isn't in the text
         assert not any("U+202F" in f for f in fixes)
+
+
+class TestFixCompileBlockers:
+    """Regression tests for deliverables PDF compile blockers."""
+
+    def test_missing_hyperref_dependency_removes_optional_package(self):
+        tex = (
+            "\\documentclass{article}\n"
+            "\\usepackage{hyperref}\n"
+            "\\usepackage{nicefrac}\n"
+            "\\begin{document}Hi\\end{document}\n"
+        )
+        errors = ["! LaTeX Error: File `refcount.sty' not found."]
+
+        fixed, fixes = fix_common_latex_errors(tex, errors)
+
+        assert "\\usepackage{hyperref}" not in fixed
+        assert "\\usepackage{nicefrac}" in fixed
+        assert any("hyperref" in fix for fix in fixes)
+
+    def test_extra_alignment_tab_expands_tabular_spec(self):
+        tex = (
+            "\\begin{tabular}{l c}\n"
+            "\\toprule\n"
+            "Method & MSE & Success \\\\\n"
+            "\\midrule\n"
+            "A & 0.1 & 0.2 \\\\\n"
+            "\\bottomrule\n"
+            "\\end{tabular}\n"
+        )
+        errors = ["! Extra alignment tab has been changed to \\cr."]
+
+        fixed, fixes = fix_common_latex_errors(tex, errors)
+
+        assert "\\begin{tabular}{l c c}" in fixed
+        assert "Method & MSE & Success" in fixed
+        assert any("tabular column spec" in fix for fix in fixes)
+
+    def test_tabular_spec_with_braces_is_preserved(self):
+        tex = (
+            "\\begin{tabular}{p{0.45\\linewidth} c}\n"
+            "Method & Score \\\\\n"
+            "\\end{tabular}\n"
+        )
+
+        fixed, fixes = fix_common_latex_errors(tex, [])
+
+        assert fixed == tex
+        assert not fixes
+
+    def test_missing_hyperref_def_dependency_removes_optional_package(self):
+        tex = (
+            "\\documentclass{article}\n"
+            "\\usepackage{hyperref}\n"
+            "\\begin{document}Hi\\end{document}\n"
+        )
+        errors = ["! LaTeX Error: File `hpdftex.def' not found."]
+
+        fixed, fixes = fix_common_latex_errors(tex, errors)
+
+        assert "\\usepackage{hyperref}" not in fixed
+        assert any("hyperref" in fix for fix in fixes)
+
+
+class TestCompileLatexPassFailures:
+    @patch("researchclaw.templates.compiler.shutil.which", return_value="/usr/bin/pdflatex")
+    @patch("researchclaw.templates.compiler._run_bibtex", return_value=True)
+    @patch("researchclaw.templates.compiler._run_pdflatex")
+    def test_later_pdflatex_pass_failure_prevents_success(
+        self,
+        mock_pdflatex,
+        mock_bibtex,
+        mock_which,
+        tmp_path: Path,
+    ):
+        _ = mock_bibtex, mock_which
+        tex = tmp_path / "paper.tex"
+        tex.write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}Hi\\bibliography{references}\\end{document}\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "references.bib").write_text("", encoding="utf-8")
+        (tmp_path / "paper.pdf").write_bytes(b"%PDF-1.4\n")
+        mock_pdflatex.side_effect = [
+            ("pass 1 ok", True),
+            ("pdflatex timed out after 120s", False),
+            ("pass 3 ok", True),
+        ]
+
+        result = compile_latex(tex, max_attempts=1, timeout=120)
+
+        assert not result.success
+        assert any("pass 2" in err for err in result.errors)
 
 
 # ---------------------------------------------------------------------------

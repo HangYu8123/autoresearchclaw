@@ -522,6 +522,7 @@ def check_class_quality(all_files: dict[str, str]) -> list[str]:
             cls_name = node.name
             methods: list[str] = []
             method_sources: dict[str, str] = {}
+            method_dumps: dict[str, str] = {}
             has_forward_new_module = False
             body_lines = 0
 
@@ -533,6 +534,7 @@ def check_class_quality(all_files: dict[str, str]) -> list[str]:
                     m_end = item.end_lineno or item.lineno
                     body_len = m_end - m_start
                     method_sources[item.name] = f"{fname}:{m_start}-{m_end}"
+                    method_dumps[item.name] = ast.dump(item)
 
                     # Check for nn.Module creation inside forward()
                     if item.name in ("forward", "__call__"):
@@ -564,6 +566,7 @@ def check_class_quality(all_files: dict[str, str]) -> list[str]:
                 "has_forward_new_module": has_forward_new_module,
                 "class_name": cls_name,
                 "has_explicit_bases": has_explicit_bases,
+                "method_dumps": method_dumps,
             }
 
             # --- Check 1: Empty or trivial class ---
@@ -578,6 +581,8 @@ def check_class_quality(all_files: dict[str, str]) -> list[str]:
                 body_lines > 5
                 and len(non_dunder) < 2
                 and not has_explicit_bases
+                and cls_name not in {"Config", "ExperimentConfig"}
+                and not cls_name.endswith("Config")
             ):
                 warnings.append(
                     f"[{fname}] Class '{cls_name}' has only {len(non_dunder)} "
@@ -627,15 +632,17 @@ def check_class_quality(all_files: dict[str, str]) -> list[str]:
                 info_a["body_lines"] > 5
                 and info_b["body_lines"] > 5
                 and info_a["non_dunder"] == info_b["non_dunder"]
-                and abs(info_a["body_lines"] - info_b["body_lines"]) <= 2
             ):
-                # Same methods, same body size — likely duplicates
-                warnings.append(
-                    f"Classes '{name_a.split(':')[1]}' and '{name_b.split(':')[1]}' "
-                    f"have identical method signatures and similar body sizes "
-                    f"({info_a['body_lines']} vs {info_b['body_lines']} lines) — "
-                    f"may be copy-paste variants with no real algorithmic difference"
-                )
+                method_names = list(info_a["non_dunder"])
+                dumps_a = [info_a["method_dumps"].get(m, "") for m in method_names]
+                dumps_b = [info_b["method_dumps"].get(m, "") for m in method_names]
+                if dumps_a == dumps_b:
+                    warnings.append(
+                        f"Classes '{name_a.split(':')[1]}' and "
+                        f"'{name_b.split(':')[1]}' have identical method "
+                        f"implementations — may be copy-paste variants with "
+                        f"no real algorithmic difference"
+                    )
 
     # --- Check 6: Ablation subclasses must override with different logic ---
     # Parse inheritance relationships and compare method ASTs
@@ -1117,7 +1124,7 @@ def check_filename_collisions(files: dict[str, str]) -> list[str]:
     }
     warnings: list[str] = []
     for fname in files:
-        stem = fname.removesuffix(".py") if fname.endswith(".py") else None
+        stem = fname[:-3] if fname.endswith(".py") else None
         if stem and stem in _SHADOW_RISK:
             warnings.append(
                 f"[{fname}] Filename shadows stdlib/pip package '{stem}'. "

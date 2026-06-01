@@ -926,6 +926,44 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_refine(args: argparse.Namespace) -> int:
+    from researchclaw.feedback.refiner import run_refine
+
+    resolved = _resolve_config_or_exit(args)
+    if resolved is None:
+        return 1
+    run_dir = Path(cast(str, args.run_dir))
+    if not run_dir.is_dir():
+        print(f"Error: run directory not found: {run_dir}", file=sys.stderr)
+        return 1
+    feedback_path = Path(cast(str, args.feedback))
+    if not feedback_path.is_file():
+        print(f"Error: feedback file not found: {feedback_path}", file=sys.stderr)
+        return 1
+    config = RCConfig.load(resolved, check_paths=False)
+    try:
+        report = run_refine(
+            run_dir=run_dir,
+            feedback_path=feedback_path,
+            config=config,
+            auto_approve=cast(bool, args.auto_approve),
+            dry_run=cast(bool, args.dry_run),
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if report is None:
+        return 1
+    print(f"\nRefine complete: from={report.from_stage.name} to={report.to_stage.name}")
+    print(f"  Quality: {report.quality_before} -> {report.quality_after}")
+    print(f"  Verifier: {report.verifier_severity}")
+    print(f"  Items addressed: {report.items_addressed}/{report.items_total}")
+    print(f"  Report: {report.report_path}")
+    if report.verifier_severity == "REJECT":
+        return 2
+    return 0 if report.overall_pass else 1
+
+
 # ── Research Enhancement commands (Agent D) ───────────────────────
 
 
@@ -1188,6 +1226,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     _ = rpt_p.add_argument("--output", "-o", help="Write report to file")
 
+    ref_p = sub.add_parser("refine", help="Apply paper feedback file to refine a completed run")
+    _ = ref_p.add_argument("--run-dir", required=True, help="Existing run artifacts directory")
+    _ = ref_p.add_argument("--feedback", "-f", required=True, help="Path to feedback file (.md/.txt)")
+    _ = ref_p.add_argument("--config", "-c", default=None, help="Config file path")
+    _ = ref_p.add_argument("--auto-approve", action="store_true", help="Skip approval gates")
+    _ = ref_p.add_argument("--dry-run", action="store_true", help="Print plan only; do not re-run pipeline")
+
     # A: Web platform
     srv_p = sub.add_parser("serve", help="Start the web server")
     _ = srv_p.add_argument("--config", "-c", default="config.yaml", help="Config file path")
@@ -1297,6 +1342,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_setup(args)
     elif command == "report":
         return cmd_report(args)
+    elif command == "refine":
+        return cmd_refine(args)
     elif command == "serve":
         return cmd_serve(args)
     elif command == "dashboard":

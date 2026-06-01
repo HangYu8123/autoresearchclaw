@@ -363,6 +363,27 @@ class TestOpenCodeBridge:
         assert not result.success
         assert "failed" in result.error.lower()
 
+    def test_generate_does_not_retry_after_timeout(self, tmp_path):
+        bridge = OpenCodeBridge(
+            model="gpt-5.2", max_retries=1, workspace_cleanup=True
+        )
+
+        with patch.object(OpenCodeBridge, "check_available", return_value=True), \
+             patch.object(
+                 bridge,
+                 "_invoke_opencode",
+                 return_value=(False, "TIMEOUT after 10.0s", 10.0),
+             ) as invoke_mock:
+            result = bridge.generate(
+                stage_dir=tmp_path,
+                topic="test",
+                exp_plan="plan",
+                metric="acc",
+            )
+
+        assert not result.success
+        assert invoke_mock.call_count == 1
+
     def test_generate_success(self, tmp_path):
         bridge = OpenCodeBridge(
             model="gpt-5.2", max_retries=0, workspace_cleanup=False

@@ -95,7 +95,7 @@ class SshRemoteSandbox:
         for src_item in project_dir.iterdir():
             dest = staging / src_item.name
             if dest.name == "experiment_harness.py":
-                logger.warning(
+                logger.info(
                     "Project contains experiment_harness.py — skipping (immutable)"
                 )
                 continue

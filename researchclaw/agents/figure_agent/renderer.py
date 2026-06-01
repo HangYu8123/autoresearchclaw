@@ -108,7 +108,7 @@ class RendererAgent(BaseAgent):
             self._use_docker = docker_ready and image_ready
             if docker_ready and not image_ready:
                 auto_missing_image = True
-                self.logger.warning(
+                self.logger.info(
                     "Docker available but image '%s' not found locally. "
                     "Falling back to LOCAL subprocess (LLM scripts run without sandboxing). "
                     "Build image: docker build -t %s researchclaw/docker/",
@@ -124,7 +124,7 @@ class RendererAgent(BaseAgent):
                 self._docker_image,
             )
         elif not auto_missing_image:
-            self.logger.warning(
+            self.logger.info(
                 "RendererAgent: Docker sandbox DISABLED — LLM-generated "
                 "scripts will run as LOCAL subprocesses WITHOUT sandboxing. "
                 "Set use_docker=True or install Docker for secure execution."

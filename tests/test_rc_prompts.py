@@ -149,9 +149,9 @@ class TestPromptManagerDefaults:
 
     def test_max_tokens(self) -> None:
         pm = PromptManager()
-        assert pm.max_tokens("code_generation") == 32768
-        assert pm.max_tokens("paper_draft") == 65536
-        assert pm.max_tokens("topic_init") == 8192
+        assert pm.max_tokens("code_generation") == 131072
+        assert pm.max_tokens("paper_draft") == 163840
+        assert pm.max_tokens("topic_init") == 12288
         for stage in pm.stage_names():
             value = pm.max_tokens(stage)
             assert isinstance(value, int), f"{stage} should have a token budget"

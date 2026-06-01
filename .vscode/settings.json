@@ -1,10 +1,10 @@
 {
   "chat.instructionsFilesLocations": {
-    ".github/harness_coding_instructions": true,
+    ".github/HarnessFlow": true,
     ".claude/rules": true
   },
   "chat.agentFilesLocations": {
-    ".github/harness_coding_instructions/agents": true
+    ".github/HarnessFlow/agents": true
   },
   "chat.includeReferencedInstructions": true
 }

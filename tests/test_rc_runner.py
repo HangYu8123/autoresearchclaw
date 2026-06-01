@@ -752,6 +752,57 @@ def test_package_deliverables_includes_style_files(
     assert "neurips_2025.sty" in manifest["files"]
 
 
+def test_package_deliverables_includes_compiled_pdf_when_latex_succeeds(
+    run_dir: Path,
+    rc_config: RCConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from researchclaw.templates import compiler
+    from researchclaw.templates.compiler import CompileResult
+
+    _setup_stage_artifacts(run_dir)
+
+    def fake_compile(tex_path: Path, **_: Any) -> CompileResult:
+        tex_path.with_suffix(".pdf").write_bytes(b"%PDF-1.4\n")
+        return CompileResult(success=True, attempts=1)
+
+    monkeypatch.setattr(compiler, "compile_latex", fake_compile)
+
+    dest = rc_runner._package_deliverables(run_dir, "run-pdf", rc_config)
+
+    assert dest is not None
+    assert (dest / "paper.pdf").exists()
+    manifest = json.loads((dest / "manifest.json").read_text())
+    assert "paper.pdf" in manifest["files"]
+
+
+def test_package_deliverables_removes_stale_pdf_when_latex_fails(
+    run_dir: Path,
+    rc_config: RCConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from researchclaw.templates import compiler
+    from researchclaw.templates.compiler import CompileResult
+
+    _setup_stage_artifacts(run_dir)
+    deliverables = run_dir / "deliverables"
+    deliverables.mkdir()
+    (deliverables / "paper.pdf").write_bytes(b"%PDF-stale\n")
+
+    def fake_compile(tex_path: Path, **_: Any) -> CompileResult:
+        assert not tex_path.with_suffix(".pdf").exists()
+        return CompileResult(success=False, attempts=1, errors=["failed"])
+
+    monkeypatch.setattr(compiler, "compile_latex", fake_compile)
+
+    dest = rc_runner._package_deliverables(run_dir, "run-stale-pdf", rc_config)
+
+    assert dest is not None
+    assert not (dest / "paper.pdf").exists()
+    manifest = json.loads((dest / "manifest.json").read_text())
+    assert "paper.pdf" not in manifest["files"]
+
+
 # ── Atomic checkpoint write tests ──
 
 

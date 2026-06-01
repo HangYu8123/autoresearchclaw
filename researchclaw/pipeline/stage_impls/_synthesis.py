@@ -105,7 +105,8 @@ def _execute_hypothesis_gen(
         perspectives_dir = stage_dir / "perspectives"
         variables = {"topic": config.research.topic, "synthesis": synthesis}
         perspectives = _multi_perspective_generate(
-            llm, DEBATE_ROLES_HYPOTHESIS, variables, perspectives_dir
+            llm, DEBATE_ROLES_HYPOTHESIS, variables, perspectives_dir,
+            min_successes=2,
         )
         # BUG-S2: If all debate perspectives failed, fall back to defaults
         # instead of sending empty context to the LLM (pure hallucination).

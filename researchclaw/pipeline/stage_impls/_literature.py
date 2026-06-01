@@ -384,15 +384,27 @@ def _execute_literature_collect(
 
         # Expand queries for broader coverage
         expanded_queries = _expand_search_queries(queries, config.research.topic)
+        search_sources = (
+            ("openalex", "semantic_scholar", "arxiv")
+            if config.llm.s2_api_key
+            else ("openalex", "arxiv")
+        )
+        if not config.llm.s2_api_key:
+            logger.info(
+                "Stage 4: Skipping anonymous Semantic Scholar search; "
+                "no S2 API key configured, using OpenAlex and arXiv"
+            )
         logger.info(
             "[literature] Searching %d queries (expanded from %d) "
-            "across OpenAlex → S2 → arXiv…",
+            "across %s…",
             len(expanded_queries),
             len(queries),
+            " → ".join(search_sources),
         )
         papers = search_papers_multi_query(
             expanded_queries,
             limit_per_query=40,
+            sources=search_sources,
             year_min=year_min,
             s2_api_key=config.llm.s2_api_key,
         )

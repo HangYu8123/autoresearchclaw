@@ -1003,6 +1003,15 @@ def validate_config(
     )
 
 
+def _parse_string_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        stripped = value.strip()
+        return (stripped,) if stripped else ()
+    return tuple(str(item) for item in value if str(item).strip())
+
+
 def _parse_llm_config(data: dict[str, Any]) -> LlmConfig:
     acp_data = data.get("acp") or {}
     return LlmConfig(
@@ -1012,7 +1021,7 @@ def _parse_llm_config(data: dict[str, Any]) -> LlmConfig:
         api_key_env=data.get("api_key_env", ""),
         api_key=data.get("api_key", ""),
         primary_model=data.get("primary_model", ""),
-        fallback_models=tuple(data.get("fallback_models") or ()),
+        fallback_models=_parse_string_tuple(data.get("fallback_models")),
         s2_api_key=data.get("s2_api_key", ""),
         notes=data.get("notes", ""),
         max_tokens=_safe_int(data.get("max_tokens"), 4096),

@@ -32,6 +32,17 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _llm_provider_unavailable(run_dir: Path) -> bool:
+    refine_log = run_dir / "stage-13" / "refinement_log.json"
+    if not refine_log.is_file():
+        return False
+    try:
+        data = json.loads(refine_log.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return isinstance(data, dict) and data.get("stop_reason") == "llm_provider_unavailable"
+
+
 def _should_start(stage: Stage, from_stage: Stage, started: bool) -> bool:
     if started:
         return True
@@ -670,7 +681,7 @@ def execute_pipeline(
             if _diag_path.exists():
                 try:
                     _diag_data = json.loads(_diag_path.read_text(encoding="utf-8"))
-                    if _diag_data.get("repair_needed"):
+                    if _diag_data.get("repair_needed") and not _llm_provider_unavailable(run_dir):
                         _run_experiment_repair(run_dir, config, run_id)
                 except (json.JSONDecodeError, OSError):
                     pass
@@ -1105,22 +1116,28 @@ def _package_deliverables(
         except Exception:  # noqa: BLE001
             logger.debug("Cite key verification/repair skipped")
 
-    # --- 9. IMP-18: Compile LaTeX to verify paper.tex ---
+    # --- 9. IMP-18: Compile LaTeX into the user-facing PDF deliverable ---
     if tex_path.exists() and bib_path.exists():
         try:
             from researchclaw.templates.compiler import compile_latex
 
+            pdf_file = dest / (tex_path.stem + ".pdf")
+            if pdf_file.exists():
+                pdf_file.unlink()
             compile_result = compile_latex(tex_path, max_attempts=3, timeout=120)
             if compile_result.success:
-                logger.info("IMP-18: paper.tex compiles successfully")
-                # Keep the generated PDF
-                pdf_path = dest / tex_path.stem
-                pdf_file = dest / (tex_path.stem + ".pdf")
                 if pdf_file.exists():
                     packaged.append(f"{tex_path.stem}.pdf")
+                    logger.info("IMP-18: paper.tex compiled to %s", pdf_file.name)
+                else:
+                    logger.info(
+                        "IMP-18: paper.tex compile reported success but no PDF "
+                        "was produced"
+                    )
             else:
-                logger.warning(
-                    "IMP-18: paper.tex compilation failed after %d attempts: %s",
+                logger.info(
+                    "IMP-18: paper.tex PDF compilation did not complete "
+                    "after %d attempts: %s",
                     compile_result.attempts,
                     compile_result.errors[:3],
                 )
@@ -1130,8 +1147,8 @@ def _package_deliverables(
                     len(compile_result.fixes_applied),
                     compile_result.fixes_applied,
                 )
-        except Exception:  # noqa: BLE001
-            logger.debug("IMP-18: LaTeX compilation skipped (non-blocking)")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("IMP-18: LaTeX compilation skipped: %s", exc)
 
     if not packaged:
         # Nothing to package — remove empty dir
@@ -1147,6 +1164,7 @@ def _package_deliverables(
         "notes": {
             "paper_final.md": "Final paper in Markdown format",
             "paper.tex": f"Conference-ready LaTeX ({config.export.target_conference})",
+            "paper.pdf": "Compiled PDF paper",
             "references.bib": "BibTeX bibliography (verified citations only)",
             "code/": "Experiment source code with requirements.txt",
             "verification_report.json": "Citation integrity & relevance verification",

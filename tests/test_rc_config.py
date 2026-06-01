@@ -246,6 +246,15 @@ def test_rcconfig_from_dict_parses_llm_max_tokens(tmp_path: Path):
     assert config.llm.max_tokens == 65536
 
 
+def test_rcconfig_from_dict_accepts_scalar_llm_fallback_model(tmp_path: Path):
+    data = _valid_config_data()
+    data["llm"]["fallback_models"] = "deepseek-v4-flash"
+
+    config = RCConfig.from_dict(data, project_root=tmp_path, check_paths=False)
+
+    assert config.llm.fallback_models == ("deepseek-v4-flash",)
+
+
 def test_rcconfig_from_dict_parses_docker_env_config(tmp_path: Path):
     data = _valid_config_data()
     data["experiment"] = {

@@ -185,7 +185,7 @@ def _execute_experiment_design(
             sp.system,
             sp.user,
             json_mode=sp.json_mode,
-            max_tokens=sp.max_tokens,
+            max_tokens=min(sp.max_tokens, 8192),
         )
         raw_yaml = _extract_yaml_block(resp.content)
         try:
